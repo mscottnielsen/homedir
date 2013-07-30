@@ -1,0 +1,602 @@
+############################################################################
+# Generic functions & aliases for unix/linux/cygwin. (nb: this is sourced
+# from the other os-*.env files.) If something is *really* OS-specific, put
+# it in env/os-*.env; also, put app-specific logic in "app-*.env".
+# A few of these will have to be redefined for os-{aix,hp-ux,sunos}.env
+# Notes:
+#  * a sample function:  function hello { echo -n "hello, world"; }
+#  * a *portable* func:  hello () { printf "hello, world\n"; }
+############################################################################
+
+# vim: {zo} open current fold; {zm,zM} close all (level--,level=0); {zr,zR} open all
+
+# listing files...
+alias la='ls -lA'
+alias ll='ls -l'
+alias l='ls -l'
+alias lm='ls -l | more'
+alias lt='ls -ltr'
+
+# file sizes... list files, recursively, and sort based on file size (largest, last)
+alias lsort="find . -type f -printf '%k\t%s\t%u\t%f\t%h\n' | sort -n"
+alias d="df -h ."
+
+# alias less='less -r'
+# alias rm='rm -i'
+# alias whence='type -a'
+alias h='history'
+alias m='more'
+alias c='clear'
+
+# alias for hgrep, if possible with egrep.
+# if no hgrep and egrep
+if ! type hgrep 2>/dev/null 1>&2
+then
+  if echo . | egrep --color=auto '.' 2>/dev/null 1>&2
+  then
+    hgrep () { egrep --color=auto "$@" ;  }
+  else
+    alias hgrep=egrep
+  fi
+fi
+
+alias eg='egrep --color=always'     # use color with more/less, too
+
+# find makefiles
+alias findm='find . -name "Make*[ke]" -print'
+
+# cd into the most-recent directory used in pwd
+cdr() {
+  local latest_dir="."
+  latest_dir=$(ls -1trF | grep '/$' | tail -1) \
+      && [ ${#latest_dir} -gt 1 ] \
+      && cd "$latest_dir" \
+      && return 0 \
+      || return 1
+}
+
+############################################################################
+# print or update homedir release version
+#
+homedir_version() {
+  [ "$#" -eq 0 ] && echo ${HOMEDIR_VER:-"1"} && return 0
+
+  local ver opt OPTIND OPTARG
+  local b=$(readlink -e $HOME/.bashrc)
+  local p=$(readlink -e $HOME/.profile)
+  local dir=${b%/*}
+
+  usage() {
+    printf "
+    Generate new or print current homedir version from git HEAD,
+    stored in \".bashrc\".
+    By default prints current homedir version (from environment,
+    already in memory.)
+
+    Usage: homedir_version [-g|-u]
+       -f  print current version from the bashrc file
+       -g  print new version from git (not the one in the file)
+       -u  update version in .bashrc
+       -h  print usage message\n"
+    return 0
+  }
+
+  get_current() {
+    # return ver if it's a number, else return false
+    local ver=$(cd $dir && git rev-list  HEAD 2>/dev/null | wc -l)
+    [ "$ver" -eq "$ver" ] && echo "$ver" && return 0
+    printf "** error: homedir project version not a number (ver=\"$ver\")\n" 1>&2
+    return 2
+  }
+
+  do_update() {
+    local file ver
+    ver=$(get_current) || { printf "** error: unable to update HOMEDIR_VER\n" 1>&2; return 2; }
+    for file
+    do
+      [ "$ver" -eq "$ver" -a -f $file ] \
+         && printf "updating old homedir version (new=$ver) in file=\"$file\":\n" 1>&2 \
+         && egrep "^HOMEDIR_VER=" $file >/dev/null \
+         && sed -i.bak "s/^HOMEDIR_VER=[0-9]* *$/HOMEDIR_VER=${ver}/" $file \
+         && printf "updated HOMEDIR_VER to $(egrep '^HOMEDIR_VER=' $file)\n" 1>&2 \
+         || printf "** error: unable to update HOMEDIR_VER=\"$ver\" in file=\"$file\"\n" 1>&2
+    done
+  }
+
+  while getopts fghu opt; do
+    case "$opt" in
+      f) # print current git revision - from bashrc, not from env
+         egrep "^HOMEDIR_VER=" $b
+         ;;
+      g) # print current git revision - from env, not bashrc
+         get_current && return 0 || return 2
+         ;;
+      h) usage
+         return 2
+         ;;
+      u) # update .bashrc and .profile (the substitution probably only works w/ linux sed)
+         do_update $b $p
+         ;;
+      *) usage
+         return 2
+         ;;
+    esac
+  done; shift $((OPTIND-1)); OPTIND=1
+  return 0
+}
+
+############################################################################
+# java related:
+# start a new shell, set to a particular version of java (path will
+# be correctly setup in .bashrc)
+alias java7='JAVA_HOME=$JAVA7_HOME bash'
+alias java6='JAVA_HOME=$JAVA6_HOME bash'
+alias java5='JAVA_HOME=$JAVA5_HOME bash'
+alias java14='JAVA_HOME=$JAVA14_HOME bash'
+
+# fire up beanshell
+#   note: just dumped jar into java1.4.2_04/jre/lib/ext
+alias bsh="java bsh.Console &"
+alias bshi="java bsh.Interpreter"
+
+
+############################################################################
+# start gvim, optionally embiggened or with wider-view/smaller-font (logs);
+# start in bg, ignore warnings, fix unity missing menu (ubuntu 11.04+).
+export GVIM_EXE=${GVIM_EXE:-gvim}
+gvim_ignore_msgs='static_gravity|g_set_prgname|extension.*missing|^ *$'
+
+ftn_g() {
+  if [ "$h_os" != "cygwin" ]; then
+    ( UBUNTU_MENUPROXY=0; $GVIM_EXE -geom 80x50+10+50 -c 'set guifont=bitstream\ vera\ sans\ mono\ 8' "$@" 2>&1 ) | egrep -v "$gvim_ignore_msgs" &
+  else
+    "$GVIM_EXE" "$@" &
+  fi
+}
+
+ftn_g2() {
+  if [ "$h_os" != "cygwin" ]; then
+    ( UBUNTU_MENUPROXY=0; $GVIM_EXE -geom 90x60+2+50 -c 'set guifont=bitstream\ vera\ sans\ mono\ 12' "$@" 2>&1 ) | egrep -v "$gvim_ignore_msgs" &
+  else
+    "$GVIM_EXE" "$@" &
+  fi
+}
+
+# start gvim, with tabs, or "wide screen" view (e.g., for logs) => e.g., alias gw='gvim -geom 160x30+10+50 -p'
+ftn_gw() {
+  if [ "$h_os" != "cygwin" ]; then
+    ( UBUNTU_MENUPROXY=0;  $GVIM_EXE -geom 180x35+5+50 -p -c 'set guifont=bitstream\ vera\ sans\ mono\ 8' "$@" 2>&1 ) | egrep -v "$gvim_ignore_msgs" &
+  else
+    "$GVIM_EXE" "$@" &
+  fi
+}
+
+alias g=ftn_g
+alias g2=ftn_g2
+alias gw=ftn_gw
+
+
+######################################
+# maven, skip test, offline
+#
+mvns () {
+  targ="compile test-compile package"
+  [ $# -gt 0 ] && targ="$@"
+  mvn -o -Dmaven.test.skip=true  $targ
+}
+
+
+############################################################################
+# psgrep for SysV-style ps, search for processes owned by user $LOGNAME,
+# args passed to grep (tries to do an 'hgrep' for color-coded results)
+#
+psx () {
+  if [ $# -eq 0 ]; then
+    printf "usage: psx pattern\n  Search through processes and (e)grep for the given pattern.\n"
+    return 2
+  fi
+
+  # for SysV-style ps. Args passed to grep; eg for case-insensitive: psx -i foo
+  ps -ef | head -1
+  if [ "$h_os" = "cygwin" ]; then  # include windows processes
+    ps -efW | egrep "$@"
+  else
+    ps -ef | egrep -v "${LOGNAME}.*$$.*egrep" | hgrep "$@"  # egrep --color=auto
+  fi
+}
+
+
+############################################################################
+# recycle bin
+del () {
+  [ $# -eq 0 ] && echo -e "usage: del [files|directories]" && return 2
+
+  [ ! -d ~/.trash ] && mkdir ~/.trash
+  for x
+  do
+   newname=${x//\//-}   # global replace "/"  with "-"
+   mv -i "$x" ~/.trash/${newname}.$$
+  done
+}
+
+############################################################################
+# mkdir & cd into it
+mkd () {
+  [ $# -ne 1 ] && printf "usage: mkd {name} \n    make directory {name} and cd into it.\n\n" && return 2
+  mkdir "$1" && cd "$1"
+}
+
+############################################################################
+# hostf - edit host env file for this host (host-$(hostname).env), then source
+#   the file, if changed. If the file doesn't exist, first create, then edit,
+#   then source it.
+# Options:
+#   -a  edit all host-env files w/ this host's same OS/arch, plus the
+#       os-env file (os-${h_os}.env). Then source this host's env file.
+#   -l  cat this host's host-env file (don't source it)
+#   -s  only source this host's host-env file (don't edit it)
+# See also:
+#   $HOMEDIR_ENV/os-${h_os}.env          - env file for this OS
+#   $HOMEDIR_HOST_ENV/host-${h_host}.env - env file for this host
+#   $HOMEDIR_HOST_ENV/bin/update-host-env.sh  - create/update host-env files
+hostf() {
+  local all=
+  local dir=${HOMEDIR_HOST_ENV:-"${HOMEDIR:-$HOME}/host_env"}
+  local os_env=${HOMEDIR_ENV:-"${HOMEDIR:-$HOME}/env"}/os-${h_os}.env
+  local h_env=$dir/host-${h_host}.env
+  local h_tmp=/tmp/${h_env}.bak.$$
+
+  [ "$h_env" = "$dir/host-.env" ] && h_env=$dir/host-$(hostname).env && h_env=${h_env/.*/} # trim domain
+
+  if [ "$1" = "-s" ]; then
+    . $h_env; return $?
+  elif [ "$1" = "-l" ]; then
+    cat $h_env; return $?
+  elif [ "$1" = "-a" ]; then
+    all=$(for x in $( $dir/bin/list-hosts.sh os=${h_os} arch_name=${h_arch_name});  do echo $dir/host-$x.env ; done; )
+  fi
+
+  [ -f $h_env ] || file $h_env
+  [ ! -f $h_env -a -d $dir ] && ( cd $dir && ./bin/update-host-env.sh -H )
+  if [ -f $h_env ]; then
+    cp -f $h_env $h_tmp
+    ${EDITOR:-vi} $h_env $all $os_env
+    diff $h_env $h_tmp >/dev/null || . $h_env
+    rm -f $h_tmp
+  fi
+}
+
+############################################################################
+# undo all existing aliases
+unaliasall () {
+  for x in $(alias | cut -d' ' -f2 | cut -d= -f1)
+  do
+     unalias $x;
+  done
+}
+
+############################################################################
+# usage: dump_man [-S {section}] {manpage}
+# {manpage} can be in the format {manpage}[.section], e.g., cat.1, link.1 or link.3p
+# if no section given, assume section 1.
+dump_man() {
+  local opt OPTIND OPTARG outfile tmpfile page sect=1
+
+  while getopts S:o: opt; do
+    case "$opt" in
+      S) sect=${OPTARG};;
+      o) outfile=${OPTARG};;
+      *) return 2;;
+    esac
+  done; shift $((OPTIND-1)); OPTIND=1
+  page=$1
+
+  tmpfile=/tmp/temp-$$-${LOGNAME:-$USER}-${page}.${sect}
+  man -S $sect $page > $tmpfile
+
+  fmt() {
+    groff -t -e -mandoc -Tascii $1 | col -bx | sed -n '/./,/^$/p'
+  }
+
+  # printf "groff -t -e -mandoc -Tascii ${page}.${sect} | col -bx > ${outfile:-/dev/null}\n"
+
+  if [ "$outfile" = "" ]; then
+    fmt $tmpfile
+  else
+    [ -e "$outfile" ] \
+        && printf "** Error: $outfile exists\n" \
+        && return 2
+    fmt $tmpfile > $outfile
+  fi
+
+  [ -e $tmpfile ] && rm -f $tmpfile
+
+  return 0
+}
+
+############################################################################
+# given (list) of directories, show their (cumulative) sizes, sorted
+big() {
+  local verbose=true append=false to_file=false ret=0
+  local opt OPTIND OPTARG
+  local f="disk-usage-$(date '+%Y-%b-%d').txt"
+
+  usage() { cat<<EOF
+     Usage: big [-?] [-s | -f {file}] [-a] [-h|-k] [files and directories...]
+
+     Display disk usage for the given files and directories
+     sorted by size, in various units (KB, MB, GB). Output to
+     both stdout and to a file.
+
+     Options:
+       -a        : append output to file (for use with '-s' or '-f {file}') (default=$append)
+       -f {file} : save output to given file rather than default (see option: -s)
+       -H        : human-readable (verbose) output, in KB,MB,GB (default=$verbose)
+       -k        : simple output, prints just usage in KB
+       -s        : save output to default file (default=$f)
+       -h | -?   : print help usage message\n"
+EOF
+    return 0
+  }
+
+  log() {
+    $to_file && tee -a $f || cat
+  }
+
+  while getopts af:hHks opt
+  do
+    case "$opt" in
+      a) append=true   ;;
+      f) f=${OPTARG}
+         to_file=true  ;;
+      H) verbose=true  ;;
+      k) verbose=false ;;
+      s) to_file=true  ;;
+      h |'?')
+         usage
+         return 2 ;;
+      *) printf "\n** error: unknown option ($@)\n"
+         usage
+         return 2 ;;
+    esac
+  done; shift $((OPTIND-1)); OPTIND=1
+
+  if $to_file ; then
+    [ -f $f ] && ! $append && printf "\n** output file exists: $f\n** " && rm -i $f
+    [ -f $f ] && ! $append && return 2
+    printf "** output to file (append=$append): $f\n\n"
+  fi
+
+  df -h . > /dev/null 2>&1 && do_df="df -h" || do_df="df -k"
+
+  printf "
+===========================================================
+Report generated on: $(date)
+-----------------------------------------------------------\n" | log
+
+  if ! $verbose
+  then
+    ( $do_df "$@" | sort -u -r
+      #printf -- "-----------------------------------------------------------\n"
+      printf -- "===========================================================\n"
+      du -sk "$@" | sort -n ) | log
+      ret=$?
+  else
+    ( $do_df "$@" | sort -u -r
+      #printf -- "-----------------------------------------------------------\n"
+      printf -- "===========================================================\n"
+      printf -- ' %9s %9s %9s           %-30s\n' 'K'        'M'        'G'       'Path'
+      printf -- ' %9s %9s %9s           %-30s\n' '--------' '--------' '--------' '------------------'
+      du -sk "$@" | while read val
+      do
+        file=$(echo $val | cut -d' ' -f2-)
+        size_k=$(echo $val | cut -d' ' -f1)
+        size_m=$(echo $size_k | sed 's/$/ \/ 1024/' | bc )
+        size_g=$(echo $size_m | sed 's/$/ \/ 1024/' | bc )
+        printf ' %9s %9s %9s           %-30s\n' "${size_k}K"  "${size_m}M"  "${size_g}G"  "$file"
+      done | sort -n
+      printf '\n' ) | log
+      ret=$?
+  fi
+  return $ret
+}
+
+
+############################################################################
+# backup my stuff, as zip file, named backup-{dir}-{timestamp}.zip
+#  backup [-s] [-d {dir}] {directory|file...}
+#   -s       - run zip command as sudo ('-s' must be first, if given)
+#   -d {dir} - put backup into the given directory, creating it if necessary
+backup () {
+  local dir=.
+  [ $# -ge 0 ] && [ "$1" = "-s" ] && run=sudo && shift
+  [ $# -ge 2 ] && [ "$1" = "-d" ] && shift && dir=$1 && shift
+  [ $# -eq 0 ]  && echo "usage: backup [-d outdir] [dir|file] ..." && return 2
+  local f="$dir/backup-$(basename $1)-$(date '+%Y-%b-%d_%H-%M').zip"
+  echo "backup file: $f"
+  [ ! -d "$dir" ] && mkdir -p "$dir"
+  echo " ----------------------------------- "
+  echo " running backup: zip -r $f $@"
+  echo " ----------------------------------- "
+  $run zip -r $f "$@"
+}
+
+############################################################################
+# Usage: ext2dir {archive.suffix} [{archive2.suffix2}...]
+#  Extracts/unzips an archive into a directory with the same name as the archive.
+#  Based on filename suffix, chooses the correct tool to extract/unzip/untar the file.
+#  If the top-level archive contains archives, those are also extracted.
+#  If duplicate subdirectories are created with the same name, those are removed;
+#  for example, "foo/foo/file1.txt" will be restructured as "foo/file1.txt".
+ext2dir () {
+  local prog=ext2dir.sh
+  type $prog 2>/dev/null 1>&2 || { printf "** error: $prog not found\n"; return 2; }
+  $prog "$@"
+}
+
+
+############################################################################
+# return true if first arg is in the remaining list of space-delimited elements
+# ex:  is_member "two"  "one two three" => true
+is_member() {
+  local item=" $1 "; shift
+  local string=" $@ "
+  [[ "$string" != "${string/$item/}" ]]
+}
+
+
+############################################################################
+# make a directory with a timestamp in it
+mkdatedir () {
+  [ $# -lt 1 ]  && echo "usage: datedir name, creates name-{timestamp}" && return 2
+
+  local d="$(date '+%Y-%b-%d')-$1"     # eg, 2006-Nov-20-{foobar}
+  echo $d
+  [ -f "${d}" -o -d "${d}" ] && mv $d ${d}.old      # could move $d into existing dir...!
+  mkdir $d
+}
+
+############################################################################
+# List functions.
+# Usage: listf [all|functioname]
+#    default: list all functions names, w/o defns
+#    all: list all functions, w/ defns
+#    [functionname]: list defn of given function
+#
+listf () {
+  # NOTE!! arg0 is "bash"! But, $# is actual num args 0-N
+  echo "args:($#) \$@:($@)  arg0:\"$0\" arg1:\"$1\" arg2:\"$2\""
+  if  (( $#  >= 1 ))
+  then
+      if [ "$1" = "all"  ]
+      then  # list all ftns, names and defns
+         declare -f # declare -p (-p lists EVERYTHING, not just ftns)
+      else  # list specific given ftn defn
+         declare -f "$1"
+      fi
+  else  # if no args. list all ftn names, only
+     declare -F
+  fi
+}
+
+
+############################################################################
+# Transform the output from the command 'diff -r -q', so that it can be used
+# to run some kind of merge tool.
+#
+# Usage: diff_filter [-o {only_in_cmd} ] [-t {merge_tool}] [-- {merge_cmd_opts}]
+#   Example: the following 'diff' command would normally produce:
+#      $ diff -r -q dir1 dir2
+#      Files dir1/file1 and dir2/file1 differ
+#      Only in dir1: file2
+#
+#   Using diff_filter converts the output:
+#      $ diff -r -q dir1 dir2 | diff_filter -t 'meld'
+#      meld dir1/file1 dir2/file1;
+#      ls -ld dir1/file2 ;
+#
+#   Put all commands and options in quotes; pass 'merge_tool' options as
+#   arguments after '--', reference file1 and file2 using \1 and \2 respectively.
+#   A more complicated example:
+#      $ diff -r -q dir1 dir2 | diff_filter  -o 'echo' -t 'kdiff3 -m' -- -o '\2.new'
+#      kdiff3 -m dir1/file1 dir2/file2 -o dir2/file2.new;
+#      echo dir1/file2 ;
+#
+#   By default just prints the command to run to stdout; to actually run the
+#   merge command, send the results to a file and run it as a script, or run
+#   through 'eval':
+#     $  diff -r -q d1 d2 | grep x | diff_filter -t kdiff3 -- -o '\2.new > tmp-script.sh
+#     $ bash ./tmp-script.sh
+#   Or,
+#     $  eval $(diff -r -q dir1 dir2 | diff_filter  -o 'ls -ld' -t 'kdiff3 -m' -- -o '\2.new')
+#
+diff_filter() {
+  local merge_args etc merge_tool='diff' only_in_cmd='ls -ld'
+  local opt OPTIND OPTARG
+
+  usage() { cat<<EOF
+   ##  Usage: diff -r -q ... | diff_filter [-o {only_in_cmd} ] [-t {merge_tool}] [-- {merge_cmd_opts}]
+   ##  Examples: diff -r -q d1 d2 | diff_filter -t meld
+   ##            diff -r -q d1 d2 | diff_filter -t 'kdiff3 -m' -- '-o \2.new'
+   ##            diff -r -q d1 d2 | diff_filter -t 'kdiff3 -m' -- '-b \1 -o \2'
+EOF
+  }
+
+  while getopts :ho:t: opt; do
+    case "$opt" in
+      h) usage; return 2;;
+      o) only_in_cmd=${OPTARG};;
+      t) merge_tool=${OPTARG};;
+      *) etc="$etc -${OPTARG}";;
+    esac
+  done; shift $((OPTIND-1)); OPTIND=1
+  # remainder is: " $etc $*"
+  merge_args="$etc $*"
+
+  # search/replace:
+  #    "Files f1 and f2 differ" => $merge_tool f1 f2 ...
+  #    "Only in d1: file3"      => $only_in_cmd d1/file3
+
+  # using  "," instead of "/" for sed
+  sed "s,^Files \(.*\) and \(.*\) differ$,${merge_tool} \1 \2 ${merge_args};\n," | \
+  sed "s,^Only in \([^:]*\) *: *\(.*\)$,${only_in_cmd} \1\/\2;\n,"
+}
+
+
+############################################################################
+# convert to upper/lowercase, copy to x buffer
+############################################################################
+
+unalias to_lower 2>/dev/null  # (temporarily) previously was alias
+
+convert_case() {
+  local mytr=${TR:-"tr"} out=cat
+  local upper='[A-Z]' lower='[a-z]'
+  local from=$upper to=$lower
+
+  subst() { cat; }
+
+  while getopts lusx opt ; do
+    case $opt in
+      l) from=$upper; to=$lower
+         ;;
+      u) from=$lower; to=$upper
+         ;;
+      s) subst() { sed 's/ /_/g'; }
+         ;;
+      x) out="xclip -selection clipboard"
+         ;;
+      *) printf "** error: unknown option converting upper/lower-case\n"
+         return 2
+         ;;
+    esac
+  done; shift $((OPTIND-1)); OPTIND=1
+
+  if [ $# -eq 0 ]; then
+    $mytr "$from" "$to" | subst | $out
+  else
+    echo "$@" | $mytr "$from" "$to" | subst | $out
+  fi
+}
+
+to_lower() {
+  convert_case $@
+}
+
+to_upper() {
+  convert_case -u $@
+}
+
+# convert wiki page url (for beehive) to wiki text
+# e.g., convert "one+two+three" => [[one two three]]
+wiki_clip () {
+ conv_page() {
+   tr '[+]' '[ ]' | sed 's/.*/\[\[&\]\]/' | xclip -selection clipboard
+ }
+ [ $# -eq 0 ] && conv_page || echo "$@" | conv_page
+}
+
+# ------------------------------------------------------------------------
+# Modelines: {{{1
+# vim:ts=8 fdm=marker
+
