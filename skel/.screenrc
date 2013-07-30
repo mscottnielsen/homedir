@@ -1,0 +1,5 @@
+shell /bin/bash
+# instead of setting term, run: screen -T xterm -S {name} ssh ...
+# term vt100
+defscrollback 5000
+caption always '%3n %H: %t // %c:%s'
