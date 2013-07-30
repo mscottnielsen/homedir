@@ -1,0 +1,116 @@
+[user]
+	# set name/email to (without quotes) "name = Your Name" and "email = your.name@example.com"
+	#name = Default Name
+	#email = no_email@example.com
+
+[color]
+	ui = auto
+	diff = auto
+	status = auto
+	branch = auto
+
+[diff]
+	tool = kdiff3
+
+[merge]
+	tool = kdiff3
+
+# [difftool "meld"]
+#	cmd = meld
+
+[mergetool "kdiff3"]
+	# http://www.kernel.org/pub/software/scm/git/docs/git-mergetool.html
+	# path = C:/Program Files (x86)/KDiff3/kdiff3.exe
+	# cmd = kdiff3 $BASE $LOCAL $REMOTE --output $MERGED
+	keepBackup = false
+	trustExitCode = false
+
+[alias]
+	# list aliases
+	#alias = config --get-regexp '^alias\.'
+	alias = "!f() { git config --get-regexp "^alias.${1}$" ; }; f"
+
+	co = checkout
+	ci = commit
+	st = status -s
+	br = branch -v -a
+	# branch list, sort by date
+	brd = "! f() { for k in $(git branch $@ | sed 's/^..//; s/ .*//'); do  echo "$(git log -1 --pretty='%Cgreen%ci %Cblue(%cr)%Creset ' $k) $k" ;  done | sort -r; }; f"
+
+	# update local files (pull=fetch+merge), but only if no conflicts
+	up = pull --ff-only
+
+	#### adding (staging) changed files (dry-run only)
+	# add/dry-run only: show what would be added (all)
+	addn = add -n .
+
+	# add/update: only consider changed files (already in index); won't stage new files
+	addu = add -u
+
+	# undo a "git add {file}" as: git unstage {file} (the "--" separates options from args)
+	unstage = reset HEAD --
+
+	# undo a "git commit"
+	uncommit = reset --soft HEAD^
+
+	#### diff'ing: http://learn.github.com/p/diff.html
+	# diff changes that haven't been added
+	dif = diff
+
+	# diff changes that have been added
+	difs = diff --staged
+
+	# diff changes {working} and last commit (what will be committed)
+	difh = diff HEAD
+
+	# diff remote branch, same as (for example): git diff origin/master master
+	difr = "diff @{u}"
+
+	# list changed files, names only
+	difl = diff --name-only
+
+
+	#### log info
+	# show file (patch)
+	logp = log -p
+
+	# very colorful, short
+	logg = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit --date=relative --decorate=full
+	logl = log --graph --decorate --pretty=oneline --abbrev-commit
+	logla = log --graph --decorate --pretty=oneline --abbrev-commit --all
+
+	# list files
+	ls = ls-files
+
+	# if a lot of merge conflicts :either edit all, or add (resolve) all
+	edit-unmerged = "!f() { git ls-files --unmerged | cut -f2 | sort -u ; }; vim `f`"
+	add-unmerged = "!f() { git ls-files --unmerged | cut -f2 | sort -u ; }; git add `f`"
+
+	# list existing files currently ignored by git
+	ign = ls-files -o -i --exclude-standard
+
+	# list files that *would* be removed via 'clean' (non-destructive)
+	ifc = clean -ndx
+
+	# print a kind of "version"
+	head-count = rev-list HEAD --count
+
+	#### similar to hg incoming / outgoing, showing what would be pulled/pushed
+	# what would be pulled/merged (use option "-p" to see patch) (note! fetches)
+	incoming = "!git remote update -p; git log ..@{u}"
+
+	# showing what would be pushed (currently committed); see also alias difr
+	outgoing = log @{u}..
+
+[branch]
+	# set up new branches to pull from that corresp. remote branch
+	# (the default is true, but you don't want it to be anything else)
+	autosetupmerge = true
+
+[push]
+	# v2.0 default, introduced in 1.7.11 (if older git, comment this) Prev default=matching
+	default = simple
+	#default = simple
+[core]
+	# prevent chmod from showing up as diff (e.g., broken file systems or windows)
+	#filemode = false
