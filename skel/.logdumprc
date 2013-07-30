@@ -1,0 +1,7 @@
+# commands to automatically insert into logdump's input
+# when started (if using 'gg' alias with rlwrap installed)
+
+ghdr on
+detail on
+
+
