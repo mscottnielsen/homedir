@@ -3,20 +3,31 @@
 # Print or set network proxy: both env vars and gnome (gsettings) network
 # proxy to manual, none (or 'auto'). Set env vars by 'sourcing' script.
 #
-# Script sets both upper & lowercase env vars: e.g., 'wget', 'curl', 'git';
+# Pass the proxy host as a command-line arg, or use the meta env var H_PROXY_HOST
+#
+# Sets both upper & lowercase vars (some utils prefer one xor the other): eg, for curl/wget/git:
 #   export http_proxy="www-proxy.mycompany.com:80"
 #   export https_proxy="www-proxy.mycompany.com:80"
 #   export ftp_proxy="www-proxy.mycompany.com:80"
 #   export all_proxy="www-proxy.mycompany.com:80"
 #
-# And 'links', & some windows ports of gnu utils:
+# ...but 'links', & some windows ports of the GNU utils use:
 #   export HTTP_PROXY="$http_proxy"
 #   export HTTPS_PROXY="$https_proxy"
 #   export FTP_PROXY="$ftp_proxy"
 #
 
-proxy_set_verbose=false
+h_proxy_set_verbose=false
 type gsettings > /dev/null 2>&1 && use_gsettings=true || use_gsettings=false
+
+proxy_script_default() {
+    local proxy=http://www-proxy
+    local domain=$(hostname -d)
+    [ "$domain" != "" ] && proxy=${proxy}.${domain}:80
+    echo "$proxy"
+}
+
+: ${H_PROXY_HOST:=$(proxy_script_default)}
 
 ###########################################################################
 # script name (keeping exposed variables to a minimum)
@@ -59,9 +70,9 @@ proxy_do_unset_var() {
   local v1=$1
   local v2=$(proxy_to_upper "$1")
 
-  $proxy_set_verbose && printf "# unsetting: ${v1}=\"${!v1}\", ${v2}=\"${!v2}\"\n" 1>&2
-  $proxy_set_verbose && printf "unset ${v1};\n" 1>&2
-  $proxy_set_verbose && printf "unset ${v2};\n" 1>&2
+  $h_proxy_set_verbose && printf "# unsetting: ${v1}=\"${!v1}\", ${v2}=\"${!v2}\"\n" 1>&2
+  $h_proxy_set_verbose && printf "unset ${v1};\n" 1>&2
+  $h_proxy_set_verbose && printf "unset ${v2};\n" 1>&2
 
   printf "unset ${v1};\n"
   printf "unset ${v2};\n"
@@ -76,9 +87,9 @@ proxy_do_set_var() {
   local v2=$(proxy_to_upper "$1")
   local url=$2
 
-  $proxy_set_verbose && printf "# setting: ${v1}=${v2}=${url}\n" 1>&2
-  $proxy_set_verbose && printf "export ${v1}=\"${url}\";\n" 1>&2
-  $proxy_set_verbose && printf "export ${v2}=\"${url}\";\n" 1>&2
+  $h_proxy_set_verbose && printf "# setting: ${v1}=${v2}=${url}\n" 1>&2
+  $h_proxy_set_verbose && printf "export ${v1}=\"${url}\";\n" 1>&2
+  $h_proxy_set_verbose && printf "export ${v2}=\"${url}\";\n" 1>&2
 
   printf "export ${v1}=\"${url}\";\n"
   printf "export ${v2}=\"${url}\";\n"
@@ -106,12 +117,12 @@ proxy_do_set_gsettings() {
 
   if $use_gsettings
   then
-    $proxy_set_verbose && proxy_do_print_gsettings "current:"
+    $h_proxy_set_verbose && proxy_do_print_gsettings "current:"
     #echo gsettings set org.gnome.system.proxy mode ${m} 1>&2
     gsettings set org.gnome.system.proxy mode ${m}
-    $proxy_set_verbose && proxy_do_print_gsettings "updated:"
+    $h_proxy_set_verbose && proxy_do_print_gsettings "updated:"
   else
-    $proxy_set_verbose && printf "(gsettings not installed.)"
+    $h_proxy_set_verbose && printf "(gsettings not installed.)"
   fi
 
   return 0
@@ -127,8 +138,7 @@ do_proxy() {
   local proxy_unset=false
   local proxy_print=false
   local proxy_mode=manual
-  #local proxy_url="www-proxy.us.oracle.com:80"  <== some utils complain if no preceeding "http"
-  local proxy_url="http://www-proxy.us.oracle.com:80"
+  local proxy_url="http://www-proxy.mycompany.com:80"  #  some utils complain if no preceeding "http://"
   proxy_vars=( http_proxy https_proxy ftp_proxy all_proxy )
 
   [ $# -eq 0 ] && proxy_set=true
@@ -148,14 +158,14 @@ do_proxy() {
       h) proxy_do_help     # print help & return;
          return 1          # can't exit if sourced
          ;;
-      q) proxy_set_verbose=false
+      q) h_proxy_set_verbose=false
          ;;
       *) printf "# ** error: unknown option ($@)\n" 1>&2
          ;;
     esac
   done; shift $((OPTIND-1)); OPTIND=1
 
-  [ $# -gt 0 ] && proxy_url=$1 && shift
+  [ $# -gt 0 ] && { proxy_url=$1 ; shift; } || proxy_url=${H_PROXY_HOST}
 
   $proxy_print && proxy_do_print_gsettings
 
