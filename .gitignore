@@ -7,7 +7,7 @@
 # * escaping "#" only necessary when it starts a filename:
 #      \#somefile#
 #      .foo#*
-# * using (.*) ignores all hidden files, but must exclude .gitignore
+# * example ignoring all hidden files (.*), excluding .gitignore
 #      .*
 #      !.gitignore
 
@@ -20,6 +20,15 @@
 !/skel/bin
 !/skel/bin/
 !/skel/bin/*
+
+# by default, ignore new per-user & per-org env config
+/skel/user_env/user-*
+/skel/user_env/org-*
+
+# example/default org, user env config
+!/skel/user_env/org-default.env
+!/skel/user_env/org-dev.env
+!/skel/user_env/user-demo.env
 
 # backup files, directories
 backup
