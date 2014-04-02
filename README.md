@@ -76,16 +76,18 @@ Here's what the full directory tree looks like (there are many more files than t
     |
     |-- user_env
     |   |-- org-default.env
-    |   |-- org-goldengate.env
+    |   |-- org-{my-dev-org}.env    # for example, org-some-cool-acryonym.env, or org-devops.env
     |   |-- ...
-    |   `-- user-msnielse.env
+    |   `-- user-{my-username}.env  # your login ($LOGNAME / $USER), will be source automatically.
+    |                               # to automatically source the org-*env files, set (in order):
+    |                               #   $ export USER_ORG=$USER_ORG,devops,some-cool-acryonym
+    |
     |
     `-- host_env
-        |-- host-{hostname1}.env
+        |-- host-{hostname1}.env     # when you login to {hostname1}, this will automatically be sourced
         |-- host-{hostname2}.env
         `-- ...
 
-The "host_env" directory can be used to configure per-host env settings (PATH, JAVA_HOME, etc); I keep this as a separate git repo that is a git submodule for the homedir git project, but it could just as easily be unversioned files, or generated from a puppet/pallet host list. 
-
+The "host_env" directory can be used to configure per-host env settings (PATH, JAVA_HOME, etc); I keep this as a separate git repo that is a git submodule for the homedir git project, but it could just as easily be unversioned files, or generated from a puppet/pallet host list.
 
 
