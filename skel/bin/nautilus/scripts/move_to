@@ -1,0 +1,17 @@
+# To move selected files to a location
+
+LOCATION=$(zenity --file-selection --directory --title="Select a directory") || exit
+
+IFS=$'\n'
+for FILENAME in $NAUTILUS_SCRIPT_SELECTED_FILE_PATHS
+do
+    if [ -e "$LOCATION"/"$(basename $FILENAME)" ];then
+       zenity --question --title="Conflict While Moving" --text="File ""$LOCATION"/"$(basename $FILENAME)"" already exists. Would you like to replace it?"
+       case "$?" in
+          1  )  exit 1 ;;
+          0  )  mv -f -- "$FILENAME" "$LOCATION" ;;
+       esac
+    else
+       mv -- "$FILENAME" "$LOCATION"
+    fi
+done

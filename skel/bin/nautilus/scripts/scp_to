@@ -1,0 +1,128 @@
+# To scp (secure copy) selected files to a remote host / location
+
+CACHED_DEFAULTS=/tmp/nautilus-scripts-defaults
+CACHED_DEFAULTS_TMP=/tmp/nautilus-scripts-defaults.$$ && rm /tmp/nautilus-scripts-defaults.* >/dev/null 2>&1
+ERR_TXT=/tmp/err.txt && [ -f "$ERR_TXT" ] && rm $ERR_TXT
+
+export RMT_DIR=${RMT_DIR:-"~"}
+export RMT_HOST=${RMT_HOST:-"$(hostname)"}
+export RMT_USER=${RMT_USER:-"${USER}"}
+
+print_env() {
+  printf "=== print env: RMT_DIR=${RMT_DIR}, RMT_HOST=${RMT_HOST}, RMT_USER=${RMT_USER}\n"
+}
+
+update_cache() {
+  echo === update_cache, values: $(print_env)
+
+  if [ "$RMT_DIR" != "" ]; then
+    cp ${CACHED_DEFAULTS} ${CACHED_DEFAULTS_TMP}
+    sed -i.bak "/^RMT_DIR=/d" $CACHED_DEFAULTS_TMP
+    echo "RMT_DIR=${RMT_DIR}" | tee -a ${CACHED_DEFAULTS_TMP}
+    mv ${CACHED_DEFAULTS_TMP} ${CACHED_DEFAULTS}
+  fi
+
+  [ "$RMT_HOST" != "" ] && sed -i.bak "s/RMT_HOST=.*/RMT_HOST=${RMT_HOST}/" $CACHED_DEFAULTS
+  [ "$RMT_USER" != "" ] && sed -i.bak "s/RMT_USER=.*/RMT_USER=${RMT_USER}/" $CACHED_DEFAULTS
+
+  echo === /update_cache ===
+}
+
+load_cache() {
+  echo === load_cache ===
+  RMT_DIR=$( egrep '^RMT_DIR='  $CACHED_DEFAULTS | sed 's/ *//'  | cut -f2 -d= )
+  RMT_HOST=$(egrep '^RMT_HOST=' $CACHED_DEFAULTS | sed 's/ *//'  | cut -f2 -d= )
+  RMT_USER=$(egrep '^RMT_USER=' $CACHED_DEFAULTS | sed 's/ *//'  | cut -f2 -d= )
+  print_env
+  echo === /load_cache ===
+}
+
+
+init_cache() {
+  echo === init cache ===
+  touch $CACHED_DEFAULTS
+  printf "RMT_DIR=${RMT_DIR}\n"    | tee -a $CACHED_DEFAULTS
+  printf "RMT_HOST=${RMT_HOST}\n"  | tee -a $CACHED_DEFAULTS
+  printf "RMT_USER=${RMT_USER}\n"  | tee -a $CACHED_DEFAULTS
+  echo == cache:
+  cat $CACHED_DEFAULTS
+  echo === /init cache ===
+}
+
+run_gui() {
+  echo === run gui ===
+  echo debug:
+  print_env
+  #LOCATION=$(zenity --file-selection --directory --title="Select a directory") || exit
+  RMT_HOST=$(zenity --entry --title="Select remote host"  --text="Remote hostname to copy file(s) to:"  --entry-text="$RMT_HOST" )
+  RMT_USER=$(zenity --entry --title="Remote user"  --text="Remote user to copy file(s) as:"  --entry-text="$RMT_USER" )
+  RMT_DIR=$(zenity --entry --title="Remote directory"  --text="Remote directory to copy file(s) to:"  --entry-text="$RMT_DIR" )
+  echo === /run gui ===
+}
+
+is_err() {
+  [ -f "$ERR_TXT" -a -s "$ERR_TXT" ]
+}
+
+get_err() {
+  is_err && cat $ERR_TXT | head -50
+  return 0
+}
+
+
+echo === init ===
+print_env
+
+# load values from previous run
+[ -f "$CACHED_DEFAULTS" ] && load_cache || init_cache
+
+print_env
+
+run_gui
+
+update_cache
+
+# remote user, host, path
+RMT=${RMT_USER}@${RMT_HOST}:$RMT_DIR
+
+echo ======= ready: $RMT =======
+
+
+# old: for FILENAME in $NAUTILUS_SCRIPT_SELECTED_FILE_PATHS
+# since env var not set, could convert URI's (file:///path/to/file): 
+#    MYPATH="`echo $NAUTILUS_SCRIPT_CURRENT_URI | cut -d'/' -f3- | sed 's/%20/ /g'`"
+# new: just accept args $@
+
+ARGS="$@"
+
+# check first if all files are readable
+for FILENAME
+do
+    if [ ! -r $FILENAME ]; then
+        echo "File can not be read: $FILENAME : $( file $FILENAME 2>&1 )"  | tee -a $ERR_TXT
+    fi
+done
+
+is_err && zenity --info --title="Problem..." --text="Unable to copy $FILENAME to $RMT => $(get_err)" && return 2
+
+# remote copy via scp (works if ssh keys are set up)
+#if script -q /dev/stdout -c "scp -r $ARGS $RMT" 2>&1 | tee -a $ERR_TXT | sed -n '/100/s/^/info: &/p' | zenity --listen --progress --pulsate --auto-close
+#if script -f -c "scp -r $ARGS $RMT" /dev/stdout | tee /tmp/err.txt  | sed -n '/100%/s/^/info: &/p'| zenity --listen --progress --pulsate --auto-close
+
+if scp -r $ARGS $RMT | zenity --progress --pulsate --text="Copying files to $RMT" --auto-close
+then
+       zenity --info --title="Successful Copy" --text="Copied to $RMT  => files: $ARGS . $(get_err) "
+
+       # zenity --question --title="Successful Copy" --text="Copied $FILENAME to $RMT"
+       # case "$?" in
+       #    1  )  exit 1 ;;
+       #    0  )  cp -a -- "$FILENAME" "$LOCATION" ;;
+       # esac
+else
+       #cp -a -- "$FILENAME" "$LOCATION"
+       is_err && zenity --info --title="Error" --text="Unable to copy files to $RMT (files: $ARGS). Reason: $(get_err)"
+fi
+#zenity --info --title="Done" --text="Done running file transfer: $RMT , files: $ARGS"
+
+#zenity --info --title="Debug Env" --text="Remote ( $RMT ), Files ( $ARGS ), Env: $(echo) $( env | grep NAUTIL) $(echo) (MYPATH=$MYPATH)"
+

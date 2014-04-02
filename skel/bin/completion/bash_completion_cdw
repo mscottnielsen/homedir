@@ -1,0 +1,75 @@
+##########################################################################
+## bash completion for my "cd-to-work" set of functions (cdw, listw, editw)
+##
+##########################################################################
+
+# PROG_PATH=${BASH_SOURCE[0]}  # get this script's name and directory
+# PROG_DIR=$(cd "$(dirname "${PROG_PATH:-$PWD}")" 2>/dev/null 1>&2 && pwd)
+# log() { :; }   # define default no-op log in case log.sh can't be found.
+# . $PROG_DIR/../common/log.sh 2>/dev/null
+
+# set logging level {NONE, ERROR, WARN, INFO, DEBUG, TRACE}
+#LOG_LEVEL=INFO
+#LOG_LEVEL=DEBUG
+
+##########################################################################
+# enable logging
+if [ ${HOMEDIR_BIN_COMMON_LOG_INIT:-0} -eq 0 ]; then
+  log() { :; }   # default no-op logger as fallback
+  [ -f $HOMEDIR_BIN/common/log.sh ] \
+    && . $HOMEDIR_BIN/common/log.sh \
+    || printf "** error: unable to load common logging library: $HOMEDIR_BIN/common/log.sh\n" 1>&2
+else
+  log DEBUG "** (${BASH_SOURCE[0]}) bash_completion_cdw : logging already configured LOG=$LOG"
+fi
+
+##########################################################################
+_cdw_listw() {
+   log DEBUG "(1)args: $*"
+   shift
+   log DEBUG "(2)list dirs: $*"
+   listw "$@" | egrep -v '^#'
+   return 0
+}
+
+##########################################################################
+_cdw() {
+   local cur=${COMP_WORDS[COMP_CWORD]}
+   local cmd=${COMP_WORDS[0]}
+   log DEBUG "cur=$cur, cmd=$cmd, COMP_WORDS[*]=${COMP_WORDS[*]}"
+
+   opts=$(_cdw_listw ${COMP_WORDS[*]})
+   log DEBUG "opts: $opts"
+   #COMPREPLY=($(compgen -W "${opts}" -- ${cur}))
+   #COMPREPLY=($(compgen -W "${opts}"))
+
+   case "$cmd" in
+     cdw | listw )
+        COMPREPLY=( $cur ${opts} )
+        ;;
+     * )
+        log WARN "can't complete \"$cmd\" using function _cdw (${BASH_SOURCE[0]})"
+        COMPREPLY=()
+        ;;
+   esac
+   return 0
+}
+
+
+##########################################################################
+# Try the most 'complete' completion possible. Use "-o nospace" for proper
+# handling of path completion (only available in newer bash).
+
+
+log DEBUG "setup cdw completion...."
+for command in listw cdw
+do
+  log DEBUG "setup cdw completion: $command $*"
+
+  complete -o bashdefault -o default -o nospace -F _cdw $command 2>/dev/null \
+   || complete            -o default -o nospace -F _cdw $command 2>/dev/null \
+   || complete            -o default            -F _cdw $command 2>/dev/null \
+   || complete                                  -F _cdw $command
+done
+
+

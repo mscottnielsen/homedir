@@ -1,0 +1,119 @@
+##########################################################################
+## Function psx is like pgrep on linux, but works across unix's.
+## usage: psx 'pattern' => search thru processes for matching pattern
+##
+## This script completes psx, (and pgrep, pkill, pkillall) with running
+##  processes. It probably only works on linux, though.
+##
+##########################################################################
+
+
+#PROG_PATH=${BASH_SOURCE[0]}  # get this script's name and directory
+#PROG_DIR=$(cd "$(dirname "${PROG_PATH:-$PWD}")" 2>/dev/null 1>&2 && pwd)
+# . $PROG_DIR/../common/log.sh 2>/dev/null # default no-op logger as fallback
+# LOG_LEVEL=INFO  # set level {NONE, ERROR, WARN, INFO, DEBUG, TRACE}
+
+##########################################################################
+# enable logging
+if [ ${HOMEDIR_BIN_COMMON_LOG_INIT:-0} -eq 0 ]; then
+  log() { :; }   # default no-op logger as fallback
+  [ -f $HOMEDIR_BIN/common/log.sh ] \
+    && . $HOMEDIR_BIN/common/log.sh \
+    || printf "** error: unable to load common logging library: $HOMEDIR_BIN/common/log.sh\n" 1>&2
+else
+  log DEBUG "** (${BASH_SOURCE[0]}) bash_completion_psx : logging already configured LOG=$LOG"
+fi
+
+
+##########################################################################
+## Notes on completion options:
+##
+## pgrep [-cflvx] [-d DELIM] [-n|-o] [-P PPIDLIST] [-g PGRPLIST]
+##   [-s SIDLIST] [-u EUIDLIST] [-U UIDLIST] [-G GIDLIST] [-t TERMLIST] [PATTERN]
+# opts_pgrep="-c -f -l -v -x -d <DELIM>  -n -o  -P <PPIDLIST> -g <PGRPLIST>  -s <SIDLIST> -u <EUIDLIST>  -U <UIDLIST>  -G <GIDLIST>  -t <TERMLIST> <PATTERN>"
+# opts_auto_pgrep="-f"
+
+## pkill [-SIGNAL] [-fvx] [-n|-o] [-P PPIDLIST] [-g PGRPLIST] [-s SIDLIST]
+##   [-u EUIDLIST] [-U UIDLIST] [-G GIDLIST] [-t TERMLIST] [PATTERN]
+# opts_pkill="-SIGNAL -f -v -x -n -o -P <PPIDLIST> -g <PGRPLIST> -s <SIDLIST> -u <EUIDLIST> -U <UIDLIST> -G <GIDLIST> -t <TERMLIST> <PATTERN>"
+# opts_auto_pkill="-f"
+
+## killall
+# opts_killall="-e --exact -I --ignore-case -g --process-group -y --younger-than -o --older-than -i --interactive -l --list -q --quiet -r --regexp -s --signal SIGNAL -u --user USER -v --verbose -V --version -w --wait"
+# opts_auto_killall=""
+
+
+##########################################################################
+# List running processes (by process name only).
+_psx_list_running_procs() {
+   log DEBUG "get list of procs $(type ps 2>/dev/null): $*"
+
+   # todo: needs to be ported to other variants of 'ps'
+   ps -e -o args:30 \
+       | cut -d' ' -f1 \
+       | grep -v '^COMMAND' \
+       | grep -v '^\[' \
+       | sed 's/^\/.*\///; s/:$//'  \
+       | sort -u
+}
+
+
+##########################################################################
+# psx [pattern]
+#
+_psx() {
+   log DEBUG "psx: $*"
+   local opts opts_auto
+   local cur=${COMP_WORDS[COMP_CWORD]}
+   local cmd=${COMP_WORDS[0]}
+   log DEBUG "cur=$cur, cmd=$cmd, COMP_WORDS[*]=${COMP_WORDS[*]}"
+
+   case "$cmd" in
+     psx )
+        if [ "${cur:0:1}" != "-" ]; then # newer bashism: [[ ${cur} = -* ]]
+            opts="$(_psx_list_running_procs)"
+            COMPREPLY=($(compgen -W "${opts}" -- ${cur}))
+        fi
+        ;;
+     pgrep | pkill | killall )
+        local opts_var="opts_${cmd}"
+        local opts_auto_var="opts_auto_${cmd}"
+        local opts_auto="${!opts_auto_var}"
+
+        if [ $COMP_CWORD -eq 1 -a ${#opts_auto} -gt 0 ]; then
+            # e.g., force "-f" option to {pgrep, pkill} if no other options.
+            # this uses the whole process name, instead of a truncated string
+            COMPREPLY=("$opts_auto ")
+        else
+          if [ "${cur:0:1}" = "-" ]; then # newer bashism: [[ ${cur} = -* ]]
+            opts=${!opts_var}
+            COMPREPLY=($(compgen -W "${opts}"  -- ${cur}))
+          else
+            opts="$(_psx_list_running_procs)"
+            COMPREPLY=($(compgen -W "${opts}" -- ${cur}))
+          fi
+        fi
+        ;;
+     * )
+        log WARN "can't complete \"$cmd\" using function _psx"
+        COMPREPLY=()
+        ;;
+   esac
+}
+
+##########################################################################
+# Try the most 'complete' completion possible. Use "-o nospace" for proper
+# handling of path completion (only available in newer bash).
+
+#log DEBUG "setup psx completion...."
+for command in psx pgrep pkill killall
+do
+  log DEBUG "setup psx completion: $command $*"
+
+  complete -o bashdefault -o default -o nospace -F _psx $command 2>/dev/null \
+   || complete            -o default -o nospace -F _psx $command 2>/dev/null \
+   || complete            -o default            -F _psx $command 2>/dev/null \
+   || complete                                  -F _psx $command
+done
+
+

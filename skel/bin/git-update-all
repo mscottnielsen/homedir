@@ -1,0 +1,40 @@
+#!/bin/bash
+##
+## For all local branches, check-out and pull (fetches & merges).
+## if it can't fast-forward one of the branches, it stops processing
+## at that point. Returns the current working state to the same branch
+## we started on.
+##
+git_update_all() {
+  local do=
+  local cont=true
+  local br=$(git name-rev --name-only HEAD 2>/dev/null)
+
+  [ "$1" = "-h" ] \
+    && printf "Usage: git update-all [-h | -n]
+      -n   dry-run, prints only what would be executed
+      -h   print usage
+    Updates all local branches (git checkout/pull fast-forward). If successful,
+    working tree is returned to original branch (currently: $br).
+    (This is a custom git extension script: ${BASH_SOURCE[0]})\n" \
+    && return 0
+
+  [ "$1" = "-n" ] && shift && do=echo
+
+  echo "# ====starting from branch: $br"
+  for x in $( git branch | cut -c3- )
+  do
+     echo "# ===(continue? $cont)====== $x"
+     $cont \
+        && $do git checkout $x \
+        && $do git pull --ff-only || cont=false
+  done
+
+  $cont \
+      && echo "# ====return to branch: \"$br\"" \
+      && [ ${#br} -gt 0 ] \
+      && $do git checkout $br
+}
+
+git_update_all "$@"
+
