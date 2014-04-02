@@ -2,7 +2,7 @@
 # A cross-platform bash environment, customizable and extendable but also under
 # version control; intended to be shared across hosts, OS's and even users.
 #
-# A single unversioned file "local.env" may be used for customizatino for the
+# A single unversioned file "local.env" may be used for customization for the
 # current user. All other config is under version control, loaded at login
 # based on hostname, OS, username, and even for individual applications.
 #
@@ -12,8 +12,9 @@
 ###############################################################################
 #set -x
 this=bashrc
-HOMEDIR_VER=723
+HOMEDIR_VER=866
 HOMEDIR_LOG=$HOME/.h_log
+#LOG_LEVEL=DEBUG
 
 h_tstamp() {
   local ts=$(date '+%s' 2>/dev/null)
@@ -38,6 +39,8 @@ h_log() {
   printf "$pref (+$(($(h_tstamp) - ts_start))s) $*" >> $HOMEDIR_LOG
   return 0
 }
+export -f h_log
+export -f h_tstamp
 
 # avoid /etc/{profile,bashrc} if running remote ssh command, to avoid dynamic login menus
 h_log "loading .${this} v=$HOMEDIR_VER, ${TERM}, BASH_SOURCE=${BASH_SOURCE},\$0=${0}, SHELL=${SHELL}\n"

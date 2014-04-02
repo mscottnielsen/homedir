@@ -33,7 +33,8 @@
 	co = checkout
 	ci = commit
 	st = status -s
-	br = branch -v -a
+	# list (local) w/ pattern: $ git br -a "bug*"
+	br = branch -v --list
 	# branch list, sort by date
 	brd = "! f() { for k in $(git branch $@ | sed 's/^..//; s/ .*//'); do  echo "$(git log -1 --pretty='%Cgreen%ci %Cblue(%cr)%Creset ' $k) $k" ;  done | sort -r; }; f"
 
@@ -44,10 +45,10 @@
 	# add/dry-run only: show what would be added (all)
 	addn = add -n .
 
-	# add/update: only consider changed files (already in index); won't stage new files
+	# add/update: only changed files (already in index); don't stage new
 	addu = add -u
 
-	# undo a "git add {file}" as: git unstage {file} (the "--" separates options from args)
+	# undo "git add {file}" ("--" separates options & args): git unstage {file}
 	unstage = reset HEAD --
 
 	# undo a "git commit"
@@ -69,15 +70,17 @@
 	# list changed files, names only
 	difl = diff --name-only
 
-
 	#### log info
 	# show file (patch)
 	logp = log -p
 
 	# very colorful, short
-	logg = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit --date=relative --decorate=full
-	logl = log --graph --decorate --pretty=oneline --abbrev-commit
-	logla = log --graph --decorate --pretty=oneline --abbrev-commit --all
+	logg = log --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an(%cn)>%Creset' --abbrev-commit --date=relative --decorate=full
+	logl = log --graph --decorate --abbrev-commit --pretty=oneline
+	# all branches
+	#logla = log --graph --decorate --abbrev-commit --all --pretty=oneline
+	logla = log --branches=* --graph --decorate --abbrev-commit --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an(%cn)>%Creset' --abbrev-commit --date=relative
+
 
 	# list files
 	ls = ls-files
@@ -108,9 +111,13 @@
 	autosetupmerge = true
 
 [push]
-	# v2.0 default, introduced in 1.7.11 (if older git, comment this) Prev default=matching
+	# v2.0 default, introduced in 1.7.11; previously, default=matching
+	#  (if using older git, comment out, or else there will be an error message)
 	default = simple
-	#default = simple
+
 [core]
-	# prevent chmod from showing up as diff (e.g., broken file systems or windows)
+	# prevent chmod from showing up as diff (e.g, broken file systems or windows)
 	#filemode = false
+	# prevent eol conversions (must set on windows/mac), always use what is checked-in)
+	#autocrlf = false
+

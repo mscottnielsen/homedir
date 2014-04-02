@@ -400,6 +400,7 @@ list_only=false       # only list files in archive, don't extract
 allow_dup_dir=false   # leave duplicate directories, e.g., foo/foo/file1.txt
 rm_dup_dir_only=false # just run de-duplicate (debugging)
 from_gui=false        # if gnome, allow the script to be run from a nautilus shortcut
+OPTIND=1
 
 while getopts dDghl opt
 do

@@ -1,0 +1,974 @@
+##############################################################################
+## GoldenGate bash completion for "ggsci" from the shell (Linux/Unix/Cygwin).
+##
+## Usage (from bash shell, press "tab" to complete command):
+## $ gg v[tab]
+##   gg view r[tab]
+##   gg view report [tab][tab]
+##      [list of extract/replicats]
+##
+## $ gg stop [tab][tab]
+##      [list of **running** extract/replicats]
+##
+## $ gg st[tab][tab]
+##     [matching commands:  start stats status stop]
+##   gg st[tab][tab]
+##
+#
+# author: mike.nielsen@oracle.com
+# version: 0.2
+#
+
+##############################################################################
+# enable logging
+if [ ${HOMEDIR_BIN_COMMON_LOG_INIT:-0} -eq 0 ]; then
+  . $HOMEDIR_BIN/common/log.sh 2>/dev/null || log() { :; }
+fi
+
+# set LOG_LEVEL to one of: {NONE, ERROR, WARN, INFO, DEBUG, TRACE}
+# export LOG_LEVEL=DEBUG
+#_gg_log() {
+#  LOG_LEVEL=INFO
+#  log "$@"
+#}
+
+##############################################################################
+# convert to lowercase/uppercase
+#
+_gg_to_lower() {
+  log DEBUG "arg: $*"
+  echo "$@" | tr '[A-Z]' '[a-z]'
+}
+
+# convert to uppercase
+_gg_to_upper() {
+  log DEBUG "arg: $*"
+  echo "$@" | tr '[a-z]' '[A-Z]'
+}
+
+##############################################################################
+# quiet grep (for solaris, if no "grep -q")
+# the "-q" option MUST be first (sorry).
+#
+_gg_grep_q() {
+  local quiet=false ret
+  [ $# -gt 0 -a "$1" = "-q" ] && shift && quiet=true
+  if $quiet ; then
+    egrep "$@" > /dev/null 2>&1
+    ret=$?
+  else
+    egrep "$@"
+    ret=$?
+  fi
+  return $ret
+}
+
+##############################################################################
+# Return true if string matches pattern (is case-insensitive, ignores whitespace).
+# Usage: match {string} {pattern} && do_work
+# basically (but less discriminating): echo 'string' | grep 'pattern' && do_work
+# (note: old Solaris bash (2.0) doesn't handle new [[ str =~ pattern]])
+#
+match() {
+  local str=$(echo "$1" | sed 's/  */ /g')
+  local pattern=$2
+  log DEBUG "compare input: \"$(echo $str)\" (\"$(echo $1)\") against pattern: \"$(echo $2)\""
+  echo "$str" | egrep -i "$pattern" >/dev/null
+}
+log TRACE function complete match
+
+
+##############################################################################
+# Get a list of extract's and/or replicat's using dirchk/dirpcs files to identify
+# what should be in the list.  First arg must be dirchk or dirpcs.
+# By default returns all extracts and replicats (but not manager).
+#
+# Usage:  _get_dirfiles {dirchk|dirpcs} [-x] {prefix}
+# Argument: pattern/name returns gg proc's that match the name
+# Options:
+#    -x   strip file suffix
+#    -e   only extracts
+#    -r   only extracts
+#    -m   include mgr in results
+#    -p {regexp}  name to match is regexp (filename arg is ignored)
+#
+_get_dirfiles() {
+  local o OPTIND OPTARG
+  local sufx=1 dirdir="" name="." ext="" add_mgr=0
+  log DEBUG "args ($#): $*"
+
+  [ $# -gt 0 ] && dirdir=$1 && shift
+
+  while getopts erxm o
+  do
+    case "$o" in
+      x) sufx=0;;
+      e) ext="${ext}e";;
+      r) ext="${ext}r";;
+      m) [ $dirdir = "dirpcs" -a -f dirpcs/MGR.pcm ] && add_mgr=1
+         [ $dirdir = "dirchk" ] && add_mgr=1
+         ;;
+      p) name=${OPTARG};;
+    esac
+  done; shift $((OPTIND-1)); OPTIND=1
+
+
+  [ $# -gt 0 ] && name="^${1}"
+  [ "$ext" != "" ] && ext="[${ext}]$" || ext="[er]$"
+
+  log DEBUG "dir=\"$dirdir\", suffix=$sufx, extensions=\"$ext\" (mgr=$add_mgr) name=\"$name\""
+
+  _gg_ls_dir() {
+     ls -1d $dirdir/*.[pc][cpr][erm] 2>/dev/null | cut -d/ -f2 | egrep -i "${ext}" | sort -u
+   }
+
+  [ $sufx -eq 0 ] \
+     && ret=$(_gg_ls_dir | cut -d. -f1 | egrep -i "$name") \
+     || ret=$(_gg_ls_dir | egrep -i "$name")
+
+  if [ $add_mgr -eq 1 ]; then
+      log DEBUG "adding mgr to: \"$(echo $ret)\""
+      [ "$ret" = "" ] && ret="MGR"
+      match "$ret" "MGR"  || ret="$ret MGR"
+   fi
+
+  log DEBUG "return: \"$(echo $ret)\""
+
+  echo $ret
+}
+log TRACE function complete _get_dirfiles
+
+##############################################################################
+# usage: _gg_get_chk [-x] prefix
+# get chkpoint files, with the given (optional) prefix. If given "-x", strip extension.
+# Options "[ -e -r -m ]" option to limit results to just extracts or replicats (and manager).
+#
+_gg_get_chk() {
+   _get_dirfiles dirchk $@
+}
+log TRACE function complete _gg_get_chk
+
+##############################################################################
+# usage: _gg_get_pcs [-x] prefix
+# get pcs files, with the given (optional) prefix. If given "-x", strip extension.
+# Options "[ -e -r -m ]" option to limit results to just extracts or replicats (and manager).
+#
+_gg_get_pcs() {
+   _get_dirfiles dirpcs $@
+}
+log TRACE function complete _gg_get_pcs
+
+##############################################################################
+# usage: _gg_get_prm [-x] [-e|-r] [-p regexp] [prefix]
+# get prm files, with the given (optional) prefix. If given "-x", strip extension.
+# Options :
+#  -e -r -m  -  option to limit results to just extracts or replicats (and manager).
+#  -p {pattern} - regexp on filename pattern match
+#
+# (See also: _gg_ls_prm, lists e/r's that have prm files but have NOT YET been "added".)
+#
+_gg_get_prm() {
+  local o OPTIND OPTARG
+  local strip_sufx=0 name="." opt="" er_pattern="^extract |^replicat " incl_mgr=0
+
+  log DEBUG "get prmfiles: $*"
+
+  while getopts erp:xM o
+  do
+    case "$o" in
+      e) er_pattern="^extract ";;
+      r) er_pattern="^replicat ";;
+      M) incl_mgr=1;;
+      x) strip_sufx=1;;
+      p) name=${OPTARG};;
+    esac
+  done; shift $((OPTIND-1)); OPTIND=1
+
+  [ $incl_mgr -eq 1 ] && er_pattern="$er_pattern|^ *port "
+  [ $# -gt 0 ] && name="^${1}" && shift
+
+  [ $strip_sufx -eq 1 ] \
+     && result=$(egrep -li "${er_pattern}" dirprm/*.prm 2>/dev/null | cut -d/ -f2  | egrep -i "$name" | sed 's/\.prm//g') \
+     || result=$(egrep -li "${er_pattern}" dirprm/*.prm 2>/dev/null | cut -d/ -f2  | egrep -i "$name" )
+
+  log INFO "search for prm files: er=\"$er_pattern\" name=\"$name\"  result=\"$(echo $result)\""
+
+  echo $result
+}
+log TRACE function complete _gg_get_prm
+
+##############################################################################
+# return true if proc is an extract
+#
+_gg_is_extract() {
+  local result=$( _gg_get_prm -e -p "^${1}$" )
+  log DEBUG "args: $@ / result=$result"
+  [ "$result" = "" ] && return 1 || return 0
+}
+log TRACE function complete _gg_is_extract
+
+# return true if proc is a replicat
+_gg_is_replicat() {
+  local result=$( _gg_get_prm -r -p "^${1}$" )
+  log DEBUG "args: $@ / result=$result"
+  [ "$result" = "" ] && return 1 || return 0
+}
+log TRACE function complete  _gg_is_replicat
+
+##############################################################################
+# List all GGSCI commands (but not options). Could dynamically generate, but
+# here just hard-code the commands to complete.
+#
+_gg_list_cmds() {
+  result="add alter cleanup create dblogin delete dumpddl edit encrypt_password fc help history info kill lag list_tables obey send show start stats status stop view"
+  # skip: set_editor shell versions
+   echo "${result}"
+  log DEBUG "args: $@ / result=$result"
+  return 0
+}
+log TRACE function complete _gg_list_cmds
+
+## notes (slightly reformatted 'ggsci> help')
+#   =command=                                   =sub-command=        =argument=
+#   CREATE                                     : SUBDIRS            : <none>
+#
+#   VIEW                                       : GGSEVT             : <none>
+#   VIEW                                       : REPORT             : <process_name>
+#
+#   INFO                                       : MARKER             :
+#
+#   EDIT, VIEW                                 : PARAMS             : <process_name>
+#
+#   INFO, SEND                                 : [MANAGER|MGR]      : <arg...>
+#   START, STOP
+#   STATUS
+#
+#   INFO, SEND                                : [ER] (optional)    : <process_name>
+#   START, STOP, KILL
+#   STATS, STATUS, LAG
+#
+#   ADD, ALTER, CLEANUP, DELETE                : {EXTRACT|REPLICAT} : <arg...>
+#   INFO, SEND                                 : {EXTRACT|REPLICAT} : <arg...>
+#   START, STOP, KILL
+#   STATS, STATUS, LAG
+#
+#   ADD, ALTER, DELETE, INFO                   : EXTTRAIL|RMTTRAIL  : <trail>
+#
+#   ADD, DELETE, INFO                          : TRACETABLE         :
+#   ADD, DELETE, INFO                          : TRANDATA           :
+#   ADD, DELETE, CLEANUP, INFO                 : CHECKPOINTTABLE    :
+#
+#  ### Commands without an object:
+#    # database
+#    DBLOGIN
+#    LIST TABLES
+#    ENCRYPT PASSWORD
+#
+#    # ddl
+#    DUMPDDL
+#
+#    # misc
+#    FC, HELP, HISTORY, INFO ALL, OBEY, SET EDITOR, SHELL,
+#    SHOW, VERSIONS, ! (note: you must type the word
+#                     COMMAND after the ! to display the ! help topic.)
+#                     i.e.: GGSCI (sys1)> help ! command
+
+
+
+##############################################################################
+# GG arguments, per command.
+
+# begin spec: now | yyyy-mm-dd hh:mm[:ss[.cccccc]]
+#add_extract_opts='extTrailSource sourceIsTable tranLog VAM extFileSource begin now extSeqNo seqno> extRba logNum <log_number> logPos <byte_offset> EOF LSN <value> threads <n> passive params <prm_file> report <report_file> desc <description>'
+
+add_opts='extract replicat extTrail extTrailSource rmtTrail traceTable tranData checkPointTable'
+add_extract_opts='extTrailSource sourceIsTable tranLog VAM extFileSource begin now extSeqNo extRba logNum logPos EOF LSN threads passive params report desc'
+extract_opts='extTrailSource'
+
+#add_replicat_opts='specialRun extFile extTrail begin now extSeqNo <seqno> extRba <rba> checkPointTable <owner.table>  noDbCheckPoint params <parameter file> report <report file> desc <description>'
+add_replicat_opts='specialRun extFile extTrail begin now extSeqNo extRba checkPointTable noDbCheckPoint params report desc'
+replicat_opts='extTrail'
+
+ggsci_opts='-v'
+
+
+alter_opts='extract replicat extTrail rmtTrail'
+alter_extract_opts='thread <num> etRollover begin extSeqNo extRBA LSN '
+
+create_opts='subdirs'
+cleanup_opts='extract replicat checkpointtable'
+cleanup_extract_opts='save <count>'
+dblogin_opts='userid password'
+delete_opts='extract replicat extTrail rmtTrail traceTable checkPointTable'
+edit_opts='param'
+info_opts='all mgr marker er extract replicat extTrail rmtTrail traceTable tranData checkPointTable'
+lag_opts='er extract replicat'
+list='tables'
+encrypt='password'
+
+#send_opts='mgr er extract replicat'
+send_er_opts='forceStop getLag report status stop trace trace2 traceInit'
+
+send_extract_opts='cacheMgr forceStop forceTrans getLag getTcpStats logEnd report rollover showTrans skipTrans status stop trace trace2 traceInit tranlogOptions vamMessage'
+cachemgr_opts='cacheStats cacheQueues cachePool'
+#forcetrans_opts='<id> thread_N force'
+forcetrans_opts='thread_N force'
+#showtrans_opts='<id> thread <n>  count <n> duration <time><unit> tabular file <name> detail'
+showtrans_opts='thread count duration tabular file detail'
+skiptrans_opts="$forcetrans_opts"
+trace2_opts='off'
+#tranlogoptions_opts='purgeOrphanedTransactions noPurgeOrphanedTransactions transCleanupFrequency <minutes>'
+tranlogoptions_opts='purgeOrphanedTransactions noPurgeOrphanedTransactions transCleanupFrequency'
+#vammessage_opts='arstats includelist<filter> excludelist<filter> openTrans'
+vammessage_opts='arstats includelist excludelist openTrans'
+
+send_replicat_opts='forceStop getLag handleCollisions noHandleCollisions report status stop trace trace2 traceInit '
+#handleCollisions_opts='<table_spec>'
+#noHandleCollisions_opts='<table_spec>'
+#replicat_trace2_opts='ddlInclude ddl ddlOnly file <filename>'
+
+send_mgr_opts='childStatus getPortInfo getPurgeOldExtracts'
+childstatus_opts='debug .'
+getportinfo_opts='detail'
+
+set_opts='editor'
+start_opts='mgr er extract replicat'
+stop_opts='mgr er extract replicat'
+status_opts='mgr er extract replicat'
+stats_opts='er extract replicat'
+view_opts='ggsevt report params'
+kill_opts='er extract replicat'
+
+##############################################################################
+# Filter an input string based on a regexp.
+# Usage: _gg_do_filter [-i] [-v] {item_list} {regexp_for_items}
+#   First arg is string containing space-separated items,
+#   Second arg is regexp to include or exclude (-v) items from the string.
+# Options:
+#    "-i" for case-insensitive,
+#    "-v" to exclude instead of include (ie., like "grep -v")
+#
+#       ** NOTE: if regexp is "" or ".", then nothing is excluded (not even
+#                if "-v" is given). The original pattern is returned.
+#
+# Example: _gg_do_filter "one two three four" "^two$|^three$"
+#  Returns: "two three"
+#  If given "-v", returns: "one four"
+#  If given "-i", does a case-insensitive match on the pattern.
+#
+_gg_do_filter() {
+  local o OPTIND OPTARG
+  local opt_v opt_i
+
+  while getopts iv o
+  do
+     case "$o" in
+        i) opt_i="-i";;
+        v) opt_v="-v";;
+     esac
+  done; shift $((OPTIND-1)); OPTIND=1
+
+  list=$1
+  match=$2
+
+  if [ "$match" = "" -o "$match" = "." ]; then
+    ret=$(echo "$list" | tr ' ' '\12')
+    log DEBUG "return all, list=\"$(echo $list)\" return=\"$(echo $ret)\""
+  else
+    ret=$(echo "$list" | tr ' ' '\12' | egrep $opt_v $opt_i "$match")
+    log DEBUG "opts=($opt_v $opt_i) list=\"$(echo $list)\" match=\"$match\" return=\"$(echo $ret)\""
+  fi
+
+  echo "$ret"
+  return 0
+}
+log TRACE function complete _gg_do_filter
+
+
+
+##############################################################################
+# For all given arguments, create an "or" regexp,
+# Also works if there is extra whitespace or newlines.
+# For example, given:
+#   args:  one two three four   (or even: "one   two\n three\n\n four\n")
+#   return: "^one$|^two$|^three$|^four$"
+#
+_gg_regexp_from_list() {
+  log DEBUG "create regexp from args($#)=$*"
+
+  local x y
+  local all="."
+
+  [ $# -gt 0 ] && all=$( echo "$*" | tr '\12' ' ' \
+       | sed 's/  */ /g; s/  *$//; s/^  *//g; s/[^ ][^ ]*/^&\$/g; s/ /|/g' )
+
+  #[ $# -gt 0 ] && all=$(
+  #   for x
+  #   do
+  #      y=$(echo "$x" | sed 's/  *//g')
+  #      [ "$y" != "" ] && echo "^${y}$"
+  #   done \
+  #   | tr '\12' '|' \
+  #   | tr ' ' '|' \
+  #   | sed 's/^|//; s/|$//'
+  # )
+
+  log DEBUG "return regexp: \"$all\""
+
+  [ "$all" = "" ] && all="." &&  log DEBUG "reset to: \"$all\""
+
+  echo "$all"
+  return 0
+}
+log TRACE function complete _gg_regexp_from_list
+
+##############################################################################
+# Create a regexp that matches all existing ("added") extracts & replicats.
+# If there are no added GG extracts or replicats, returns regexp "."
+#
+_gg_regexp_added_procs() {
+  local all_procs=$(_gg_get_chk -x)
+  local all_procs_pattern=$(_gg_regexp_from_list $all_procs)
+
+  [ "$all_procs_pattern" = "" -o "$all_procs_pattern" = "^$" ] \
+     && log WARN "warning: all_pattern=$all_procs_pattern , resetting_to=." \
+     && all_procs_pattern="."
+
+  echo "$all_procs_pattern"
+  return 0
+}
+log TRACE function complete _gg_regexp_added_procs
+
+
+##############################################################################
+# List GG processes currently 'added'. Options:
+#  * limit results to processes running/not running.
+#  * include/exclude mgr.
+# (Checks existence of files in dirchk/dirpcs, doesn't use ggsci, so it's quite fast.)
+#
+# Usage: _gg_ls_procs [ -a | -r | -s | -E | -R ] [replicat|extract|er] {procname_prefix}
+#  Where {procname_prefix} is the first part of the proc (prm file), used to limit results
+#  to those that match (e.g., "e" =includes=> "eora extora23", but not "repora")
+#
+#  The following return 'added' proc's (extract AND replicat) but not mgr:
+#    -a  list ALL procs (except mgr) (default)        - check files in dirchk/*
+#    -r  just RUNNING procs (except mgr)              - check files in dirpcs/*
+#    -s  just STOPPED (or ABENDED) procs (except mgr) - in dirchk, but not dirpcs
+#
+#  To be used with [-a -r -s] flags ("-a" is the default):
+#    -M  include mgr in results
+#    -E  just list extract processes
+#    -R  just list replicat processes
+#
+#  For convenience, optional arguments (before {procname_prefix})
+#    extract  - same as option -E
+#    replicat - same as option -R
+#    er       - same as option -a
+#
+# (See also: _gg_ls_prm, lists e/r's that have prm files but have NOT YET been "added".)
+#
+_gg_ls_procs () {
+  local o OPTIND OPTARG
+  local procs="" incl_er="" get_status="all" arg="." convert="lower" incl_mgr="" result=""
+  local tmp_added tmp_running tmp_running_regexp
+
+  log DEBUG "args: $*"
+
+  while getopts arsMER o
+  do
+    case "$o" in
+      M) incl_mgr="-m" ;;            # add mgr to results
+      E) incl_er="-e" ;;             # just extracts (not mgr)
+      R) incl_er="-r" ;;             # just replicats (not mgr)
+      a) get_status="all" ;;        # all "added" procs (in dirchk)
+      r) get_status="running" ;;    # running (in dirpcs)
+      s) get_status="stopped" ;;    # stopped (in dirchk, but NOT in dirpcs)
+      *) log ERROR "unknown option (trying to list 'added' procs)" ;;
+    esac
+  done; shift $((OPTIND-1)); OPTIND=1
+
+  # Arg "extract" or "replicat" is alias for option "-E" or "-R".
+  # If arg is "er" (w/ no other option), just means "extract|replicat", NOT proc name.
+  # Otherwise "arg" is the proc name pattern to match; e.g., "capt" =matches=> "capture".
+  # if given uppercase, leave result in uppercase; if given lowercase, return lowercase.
+
+  [ $# -ge 1 ] && [ "$1" = "extract"  ] && shift && incl_er="-e"
+  [ $# -ge 1 ] && [ "$1" = "replicat" ] && shift && incl_er="-r"
+  [ $# -ge 1 ] && [ "$1" = "er" -a "$incl_er" = "" ] && shift       # "er" = just means extract|replicat
+  [ $# -eq 0 ] && arg="." || arg="$@"
+  [ "$arg" = "$(_gg_to_upper $arg)" ] && convert="upper"
+
+  #match "$get_status" "running|all"
+  tmp_added=$(_gg_get_chk -x $incl_er $incl_mgr "$arg" )
+  tmp_running=$(_gg_get_pcs -x $incl_er $incl_mgr "$arg" )
+  tmp_running_regexp=$(_gg_regexp_from_list "$tmp_running")
+
+  log DEBUG "0: tmp: added=$tmp_added running=$tmp_running running_exp=$tmp_running_regexp"
+
+  match "$get_status" "all" \
+     && procs="$tmp_added"
+
+  match "$get_status" "running" \
+     && procs="$tmp_running"
+
+  [ "$tmp_added" != "" ] \
+     && match "$get_status" "stopped" \
+     && procs=$(_gg_do_filter -v "${tmp_added}" "${tmp_running_regexp}")
+
+  log DEBUG "1: arg=\"$arg\" ($get_status $incl_mgr $incl_er) procs=\"$(echo $procs)\" ($convert)"
+
+  [ "$convert" = "lower" ] && procs=$(_gg_to_lower "$procs")
+
+  log DEBUG "2: arg=\"$arg\" ($get_status $incl_mgr $incl_er) procs=\"$(echo $procs)\" ($convert): \"$(echo $result)\""
+
+  result=$(echo "$procs" | sed 's/^ *//; s/ *$//')
+
+  log DEBUG "3: arg=\"$arg\" ($get_status $incl_mgr $incl_er) procs=\"$(echo $procs)\" ($convert): \"$(echo $result)\""
+
+
+  echo "$result"
+  return 0
+}
+log TRACE function complete _gg_ls_procs
+
+##############################################################################
+# List GG processes currently 'added', using ggsci to query status.
+# Same as _gg_ls_procs, but actually uses ggsci to check for running status (much slower)
+#
+_gg_ls_procs_live () {
+  local o OPTIND OPTARG
+  local pattern="" result=""
+  local status="." arg="" convert="lower" mgr_include="false"
+
+  log DEBUG "args: $*"
+
+  while getopts arsMER o
+  do
+    case "$o" in
+      a) status="." ;;
+      r) status="RUNNING" ;;
+      s) status="STOPPED|ABENDED" ;;
+      M) mgr_include="true" ;;
+      E) pattern="^EXTRACT" ;;
+      R) pattern="^REPLICAT" ;;
+      *) log ERROR "** error: unknown option (gg_ls_procs)" ;;
+    esac
+  done; shift $((OPTIND-1)); OPTIND=1
+
+  [ $# -ge 1 ] && [ "$1" = "extract"  ] && shift && pattern="^EXTRACT"
+  [ $# -ge 1 ] && [ "$1" = "replicat" ] && shift && pattern="^REPLICAT"
+
+  # arg is the pattern to match; e.g., "capt" =matches=> "capture".
+  # if given uppercase, return uppercase; if given lowercase, return lowercase.
+  # ignore arg "er", unless explicit option "-E" or "-R"
+  [ $# -ge 1 ] && [ "$1" = "er" -a "$pattern" = "" ] && shift
+  [ $# -eq 0 ] && arg="." || arg="$@"
+  [ "$arg" = "$(_gg_to_upper $arg)" ] && convert="upper"
+
+  [ "$pattern" = "" ] && pattern="^EXT|^REP"
+  [ "$mgr_include" = "true" ] && pattern="$pattern|^MANAGER"
+
+  log DEBUG "mgr=$mgr_include, pattern=\"$pattern\", arg=\"$arg\", status=\"$status\""
+
+  # the 'gg' prog already strips out a lot of the useless output
+  procs=$( gg "info all" \
+             | egrep -iv "^Program|^Oracle |^Version |^Copyright |^ *$|^GGSCI" \
+             | egrep -i "${pattern}" \
+             | egrep -i "${arg}" \
+             | egrep "${status}" \
+             | sed 's/^MANAGER.*/& MANAGER/' \
+             | awk '{ print $3}' \
+             | tr '\12' ' ' )
+
+  [ "$convert" = "lower" ] \
+       && result=$(echo "$procs" | tr '[A-Z]' '[a-z]') \
+       || result=$(echo "$procs")
+
+  result=$(echo "$result" | sed 's/^ *//; s/ *$//')
+
+  log INFO "mgr=$mgr_include, pattern=\"$pattern\", arg=\"$arg\", status=\"$status\" convert=$convert, return: \"$result\""
+
+  echo "$result"
+  return 0
+}
+log TRACE function complete _gg_ls_procs_live
+
+##############################################################################
+# Look for an existing extract/replicat that matches the given pattern.
+# Only option is "-p" to print out the result if matched; by default
+# just does "egrep -q ..."
+#
+# The grep is always case-insensitive (-i) by default.
+#
+# usage:    _gg_match_proc [-p] {pattern}
+# examples:
+#   _gg_match_proc foo      # returns "true" if there's an extract called "FOOBAR"
+#   _gg_match_proc -p foo   # returns "true" and prints "FOOBAR"
+#
+_gg_match_proc() {
+  local opt="-q"
+  [ $# -gt 0 -a "$1" = "-p" ] && shift && opt=
+
+  # generate a regexp of all procs, e.g., "eora|repl|foo|bar"
+  local all_procs=$(_gg_regexp_added_procs)
+  log DEBUG "_gg_match_proc: match=$@, opt=$opt, arg=$arg, all_procs=$all_procs"
+
+  # _gg_grep_q requires -q first
+  echo "$@" | _gg_grep_q $opt -i "$all_procs"
+  return $?
+}
+
+
+##############################################################################
+# Lists extracts/replicats that have prm files but have NOT YET been "added".
+# To list all prm files (w/o prm suffix), use option "-a" (for "all").
+#
+# Usage:  _gg_ls_prm [-a] [replicat|extract] {pattern}
+#   where "{pattern}" is the partial name of a extract or replicat.
+
+# Options:
+#   -a    list ALL extracts and replicats, not just those
+#         that have NOT yet been "added"
+#
+# Arguments:
+#    arg1="replicat" or "extract"   - to limit results to just extracts or replicats.
+#    arg2={possible prm file matches}  - filename match
+#
+# Return: just the extract or replicat name (no prm extension)
+#
+# Example:  _gg_ls_prm replicat foo9
+#  given: dirprm contains (not yet added): foo99rep.prm foo99ext.prm bar.prm
+#  returns: "foo99rep" (a replicat, no extension)
+#
+# See also:
+#    _gg_ls_procs, which lists e/r's that HAVE ONLY been added.
+#    _gg_get_prm, which lists all prm files
+#
+_gg_ls_prm() {
+  local f arg all="false" er_pattern="^extract |^replicat " prm_opt=""
+
+  [ $# -gt 0 -a "$1" = "-a" ] && all="true" && shift
+  [ $# -gt 0 ] && er_pattern="^${1} " && prm_opt="$1" && shift
+  [ $# -eq 0 ] && arg="." || arg="$@"
+
+  log DEBUG "_gg_ls_prm: er=\"$er_pattern\", arg=$arg"
+
+
+  if [ "$all" = "true" ]; then
+     [ "$prm_opt" = "extract" ] && _gg_get_prm -x -e  && return 0
+     [ "$prm_opt" = "replicat" ] && _gg_get_prm -x -r && return 0
+     _gg_get_prm -x
+     return 0
+  fi
+
+
+  # from list of prm files, ignoring 'added' extracts and replicats
+  [ "$all" != "true" ] && pattern=$(_gg_regexp_added_procs) || pattern=""
+
+  result=$(
+     for x in $(egrep -li "${er_pattern}" dirprm/*.prm 2>/dev/null)
+     do
+       # ignore processes (dirchk, dirpcs), just use dirprm for matches
+       f=$(basename "$x" .prm)
+       [ "$all" != "true" ] \
+            && echo "$f" | egrep -i "^${arg}" | egrep -iv "$pattern" \
+            || echo "$f" | egrep -i "^${arg}"
+     done )
+
+  log DEBUG "_gg_ls_prm: ignore=\"$pattern\", match=$arg result=$result"
+
+  echo "$result"
+  return 0
+}
+
+##########################################################################
+# expects argument: ${cur}
+#
+_gg_filelist() {
+  log DEBUG "begin: args($#) $*"
+  #compgen -o nospace -f -d -- "${1}" 2>/dev/null | egrep -iv '\.tpl$|\.dmp$|\.exe$|dll$|\.so|\.jar$'
+  #compgen -o nospace -f -d -- "${1}" 2>> $LOG | egrep -iv '\.tpl$|\.dmp$|\.exe$|dll$|\.so|\.jar$|~$' | sed 's/ *$//'
+  # append errors to log file
+  compgen -o nospace -f -d -- "${1}" 2> >(log WARN) | egrep -iv '\.tpl$|\.dmp$|\.exe$|dll$|\.so|\.jar$|~$' | sed 's/ *$//'
+}
+
+##############################################################################
+# Basic ggsci completion; have to to invoking the shell commands "gg" to use.
+#
+_gg() {
+    local cur prev prev2 cmd cmd2 cmd3 cmd_opts all_commands opt opts var
+    COMPREPLY=()
+
+    prev=${COMP_WORDS[COMP_CWORD-1]}
+    [ $COMP_CWORD -ge 2 ] && prev2=${COMP_WORDS[COMP_CWORD-2]}
+    cur=${COMP_WORDS[COMP_CWORD]}
+    #cur_all=$(printf -- "%s" ${COMP_WORDS[@]})
+    cur_all=$(echo ${COMP_WORDS[@]:1})
+    cmd=${COMP_WORDS[1]}
+    cmd2=${COMP_WORDS[2]}
+    cmd3=${COMP_WORDS[3]}
+    cmd_opts="${cmd}_opts"
+    cmd2_opts="${cmd}_${cmd2}_opts"
+    all_commands=$( _gg_list_cmds )
+
+    # for debug logging, list current command and context
+    dbg=" (cmd[$COMP_CWORD]=\"$cmd\", cur=\"${cur}\") [prev2=\"$prev2\" prev=\"$prev\" cmd=\"$cmd\" cmd2=\"$cmd2\" cmd3=\"$cmd3\"]"
+    log DEBUG "DEBUG: $dbg"
+
+    # complete the arguments to some of the commands
+    if [[ $COMP_CWORD -eq 1 ]] ; then
+        log DEBUG "list dir,files $dbg"
+        if echo "$cur" | _gg_grep_q -q '^\./|dirp|dirdef|dirout|dirrpt|dirsql|dirtst' ; then
+           log DEBUG "given ./* or dir*, complete files $dbg"
+           COMPREPLY=( $(_gg_filelist "$cur") )
+           compopt -o nospace 2> >(log WARN)
+        else
+           log DEBUG "print all commands $dbg"
+           COMPREPLY=($(compgen -W "${all_commands}" -- ${cur}))
+        fi
+    else
+        if [[ "$cur" == -* ]]; then
+           # if currrent starts with "-", complete flags (there aren't many flags in ggsci)
+           log DEBUG "complete flags $dbg"
+           case "$cmd" in
+              ggsci)
+                 opts=${!cmd_opts}
+                 log DEBUG "cur=\"$cur\" ggsci: opts=$opts $dbg"
+                 ;;
+              * )
+                 opts=${!cmd_opts}
+                 log DEBUG "cur=\"$cur\" other: opts=$opts $dbg"
+                ;;
+           esac
+           [ -n "$opts" -a -z "$COMPREPLY" ] && COMPREPLY=( $(compgen -W "$opts" -- $cur ) )
+        elif echo "$cur" | _gg_grep_q -q '^\./' ; then
+           # the special case of "edit param ./[tab]"
+           log INFO  "completing './' $dbg"
+           COMPREPLY=( $(_gg_filelist "$cur") )
+           compopt -o nospace 2> >(log WARN)
+        else
+           # else, if currrent starts with a command, complete arguments for commands
+           log INFO "============================================================="
+           log INFO "*** CASE cmd=\"$cmd\": opts=($cmd_opts) opts=($opts) $dbg"
+
+           case "$cmd" in
+               gg )
+                  opts=$all_commands
+                  ;;
+               add | alter)
+                  if match "$prev" "^extract$|^replicat$"
+                  then
+                    if match "$cmd $cmd2" "^add  *extTrail"
+                    then
+                      log INFO  "add exttrail => prm files that HAVE been added"
+                      opts=$(_gg_ls_procs $prev $cur)
+                    else
+                      log INFO  "add {something} => prm files that haven't been added"
+                      opts=$(_gg_ls_prm $prev $cur)
+                    fi
+                  elif match "$prev" "^extTrailSource$|^extTrail$"
+                  then
+                    log INFO  "is add-extract match trail ($prev)"
+                    opts=$(ls dirdat/????????  2>/dev/null | tr ' ' '\12' | cut -c1-9)
+                  elif _gg_is_extract "$prev"
+                  then
+                    log INFO  "is add-extract ($prev), add_extract_opts"
+                    var=${cmd}_extract_opts  # add_extract_opts, alter_extract_opts
+                    opts=${!var}
+                  elif _gg_is_replicat "$prev"
+                  then
+                    log INFO  "is add-replicat ($prev), add_replicat_opts"
+                    var=${cmd}_replicat_opts  # add_replicat_opts, alter_replicat_opts
+                    opts=${!var}
+                  else
+                    log INFO  "is cmd(add/alter)-xxx (prev=$prev), check cmd_opts=$cmd_opts / cmd2_opts=$cmd2_opts"
+
+                    [ "${!cmd2_opts}" != "" ] \
+                       && opts=${!cmd2_opts} \
+                       && log INFO  "use detailed opts: cmd2_opts=$cmd2_opts"
+
+                    [ "${!cmd2_opts}" = "" ] \
+                       && opts=${!cmd_opts} \
+                       && log INFO  "use generic opts: cmd_opts=$cmd_opts"
+                  fi
+                  ;;
+
+               cleanup )  # valid for stopped extracts/replicats (not mgr) and checkpointtable
+                  match "$prev" "^extract$|^replicat$|^er$" \
+                      && opts=$( _gg_ls_procs -s $prev $cur) \
+                      || opts="$( _gg_ls_procs -s $cur) ${!cmd_opts}"
+                  ;;
+
+               stop | kill )  # valid for all running processes (including mgr)
+                  match "$prev" "^extract$|^replicat$|^er$" \
+                      && opts="$( _gg_ls_procs -r $prev $cur) \\*" \
+                      || opts=$( _gg_ls_procs -M -r $cur)
+                  ;;
+
+               stats | lag )  # valid for running extract/replicat processes (but NOT mgr)
+                  match "$prev" "^extract$|^replicat$|^er$" \
+                      && opts="$( _gg_ls_procs -r $prev $cur) \\*" \
+                      || opts="$( _gg_ls_procs -r $cur) ${!cmd_opts}"
+                  ;;
+
+               start )  # valid for stopped processes (including mgr)
+                  # if given arg [replicat|extract], limit matches, otherwise match any e/r
+                  match "$prev" "^extract$|^replicat$|^er$" \
+                      && opts="$( _gg_ls_procs -s $prev $cur) \\*" \
+                      || opts=$( _gg_ls_procs -M -s $cur)
+                  # remove previously included processes
+                  log "de-dup response [$cur_all] (before): $opts"
+                  opts=$(_gg_do_filter -i -v "$opts" "$(_gg_regexp_from_list $cur_all)")
+                  log "de-dup response(after): $opts"
+                  ;;
+
+               delete )  # valid for stopped extract/replicat processes
+                  match "$prev" "^extract$|^replicat$|^er$" \
+                      && opts=$( _gg_ls_procs -s $prev $cur) \
+                      || opts=$( _gg_ls_procs -s $cur)
+                  ;;
+
+               info | status ) # valid for all stopped/running processes (including mgr)
+                  match "$prev" "^extract$|^replicat$|^er$" \
+                      && opts="$( _gg_ls_procs -a $prev $cur) \\*" \
+                      || opts="$( _gg_ls_procs -a -M $cur) ${!cmd_opts}"
+                  ;;
+
+               help )
+                  opts=${all_commands}
+                  ;;
+
+               edit )
+                  if [ "$prev" = "edit"  ]; then
+                      opts=$edit_opts
+                  elif [ "$cmd2" = "params" -o "$cmd2" = "param" ]; then
+                      opts=$( _gg_get_prm -x -M "$cur" )
+                  fi
+                  ;;
+
+               view )
+                  if [ "$prev" = "view"  ]; then
+                      opts=$view_opts
+                  elif [ "$cmd2" = "report"  ]; then
+                      opts=$( _gg_ls_procs -a -M "$cur" )
+                  elif [ "$cmd2" = "params" -o "$cmd2" = "param" ]; then
+                      #opts=$( _gg_ls_procs -a -M "$cur" )
+                      opts=$( _gg_get_prm -x "$cur" )
+                  fi
+                  ;;
+
+               report )
+                  [ "$prev" = "view"  ] && opts=$( _gg_ls_procs "$cur" )
+                  ;;
+
+
+               send )
+                  if [ "$prev" = "send" ] ; then
+                     log INFO  "'send' to all running procs (incl mgr)"
+                     opts=$(_gg_ls_procs -M -r $cur)
+                  elif match "$prev" "^extract$|^replicat$|^er$"; then
+                     log INFO  "'send' to running e/r procs (prev=$prev)"
+                     opts="$( _gg_ls_procs -r $prev $cur) \\*"
+                  elif match "$prev" "mgr|manager"; then
+                     log INFO  "'send' to mgr (prev=$prev)"
+                     opts=${send_mgr_opts}
+                  elif match "$prev" $(_gg_regexp_added_procs); then
+                     log INFO  "'send' to running proc: $prev"
+                     if _gg_is_extract "$prev"
+                     then
+                         log INFO  "'send' to running extract proc: $prev"
+                         opts=$send_extract_opts
+                     elif _gg_is_replicat "$prev"
+                     then
+                         log INFO  "'send' to running replicat proc: $prev"
+                         opts=${send_replicat_opts}
+                     else
+                         log INFO  "'send' to running proc (unknown): $prev"
+                         opts="${send_er_opts} UNKNOWN"
+                     fi
+                  fi
+                  ;;
+
+               * )
+                  log INFO  "Unknown case:  $cmd /  cmd_opts=$cmd_opts $dbg"
+
+                  local existing="$(_gg_regexp_added_procs)"
+                  log INFO  "currently added e/r: $existing"
+
+                  if [ "$existing" != "." ] && match "$cmd" "$existing"
+                  then
+                      if [ "$prev" = "send" ]; then
+                          opts=$send_extract_opts
+                      elif [ "$prev2" = "send" ]; then
+                          if match "$prev" "extract"
+                          then
+                             opts=$send_extract_opts
+                          elif match "$prev" "^er$"
+                          then
+                             opts=$send_er_opts
+                          elif match "$prev" "replicat"
+                          then
+                             opts=$send_replicat_opts
+                          fi
+                      fi
+                      log INFO  "matched added e/r: opts=$opts"
+                  elif match "$prev" "^extract$|^replicat$|^er$"
+                  then
+                      opts=$( _gg_ls_procs "$prev" "$cur" )
+                      log INFO  "assume matching e/r: opts=$opts"
+                  else
+                      opts=${!cmd_opts}
+                      log INFO  "using default options: opts=$opts"
+                  fi
+
+                  log INFO  "Unknown case: $cmd_opts / opts=$opts"
+                  ;;
+           esac
+           [ "$opts" = "$prev" ] && opts="" && log DEBUG "next_opt = last_opt => nop $dbg"
+           log INFO  "CASE result: $cmd_opts / opts=\"$(echo $opts)\", COMPREPLY=\"$COMPREPLY\" $dbg"
+
+           #[ -n "$opts" -a -z "$COMPREPLY" ] && COMPREPLY=( $(compgen -W "$opts" -- $cur ) )
+           log DEBUG "============================================================="
+
+           [ -n "$opts" -a -z "$COMPREPLY" ] && COMPREPLY=( $(for x in $opts; do echo "$x" | egrep -i "^$cur"; done ) )
+        fi
+    fi
+
+   return 0
+}
+
+##############################################################################
+# complete "obey"
+#
+_gg_obey_prm() {
+  egrep -v '~$|xml$'
+}
+
+_gg_obey_list_files() {
+   ( cd dirprm && ls -1 *.prm *.oby 2>/dev/null | sed 's/\.prm//' | _gg_obey_prm )
+}
+
+
+_gg_obey() {
+    local cur files
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    files="$(_gg_obey_list_files)"
+    [[ ${cur} != -* ]] && COMPREPLY=( $(compgen -W "${files}" -- ${cur}) )
+}
+
+
+##############################################################################
+# Enable completion for 'gg'. Try the most 'complete' completion possible.
+# ("-o nospace" to avoid spaces after every dir/file, but only in newer bash)
+#
+#complete -o bashdefault -o default -o nospace  -F _gg gg 2>/dev/null
+complete -o bashdefault -o default             -F _gg gg 2>/dev/null \
+   || complete -o default                      -F _gg gg 2>/dev/null \
+   || complete                                 -F _gg gg
+
+complete -o bashdefault -o default -o nospace -F _gg_obey obey 2>/dev/null \
+   || complete -o default -o nospace          -F _gg_obey obey 2>/dev/null \
+   || complete -o default                     -F _gg_obey obey 2>/dev/null \
+   || complete                                -F _gg_obey obey
+

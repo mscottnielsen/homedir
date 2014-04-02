@@ -3,9 +3,9 @@
 set PROG_PATH=%~dp0
 %PROG_PATH%\fix-mks.bat
 
-if exist c:\cygwin\bin\mintty.exe (
+if exist %PROG_PATH%\bin\mintty.exe (
   :: better terminal than cmd.exe
-  C:\cygwin\bin\mintty.exe -
+  %PROG_PATH%\bin\mintty.exe -
 ) else (
    :: simple bash in cmd
    bash --login -i

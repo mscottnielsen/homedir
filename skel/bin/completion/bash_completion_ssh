@@ -1,0 +1,74 @@
+# generate  hostname completion using a directory of "host" files
+# if domain isn't there, autocomplete with a default
+
+_ssh_add_domain() {
+  sed 's/\(^[^.]*$\)/\1.us.oracle.com/'
+}
+
+# Include all hosts currently logged into (as-is, without modification (e.g., fqdn)).
+# Desn't work so well if executing 'ssh host command' or some variant; tries to filter those.
+_ssh_current_logins() {
+  local pattern="${LOGNAME:-$USER}.*ssh "
+  case "$h_os" in
+    linux | sunos)
+      ps -ef | grep -v grep | egrep  "${pattern}"
+      ;;
+    aix)
+      ps auxww | grep -v grep | egrep "${pattern}"
+      ;;
+    hp-ux)
+      UNIX95=true ps -e -o pid,user,vsz,cpu,etime,args | egrep "${pattern}"
+      ;;
+    cygwin)
+      ps -efW | grep -v grep | egrep  "${pattern}"
+      ;;
+    *)
+      ps -ef | grep -v grep | egrep  "${pattern}"
+      ;;
+  esac |  sed 's/[a-z]*sh -c.*//' | awk '{ print $NF }' | grep .
+  return 0
+}
+
+# include all hosts that have configuration files (~/host_env/*.env);
+# domain name is added if it doesn't already exist.
+_ssh_known_hosts() {
+   # [[ -f ~/.ssh/known_hosts ]] && cut -d " " -f1 ~/.ssh/known_hosts | cut -d "," -f1
+   local env_dir=${HOMEDIR_HOST_ENV:-$HOME/host_env}
+   [ ! -d "$env_dir" ] && return 0
+   sed -n "/#.*Env: host=/p" $env_dir/host-*env 2>/dev/null \
+      | sed 's/^.*host=//; s/ *os=.*//' \
+      | grep '.'  \
+      | sort -u \
+      | _ssh_add_domain
+}
+
+
+
+_ssh() {
+    local cur known_hosts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    known_hosts="$(_ssh_current_logins) $(_ssh_known_hosts)"
+    [[ ${cur} != -* ]] && COMPREPLY=( $(compgen -W "${known_hosts}" -- ${cur}) )
+}
+
+#complete -o bashdefault -o default -o nospace -F _ssh ssh 2>/dev/null \
+#    || complete -o default -o nospace -F _ssh ssh
+
+
+##########################################################################
+# Try the most 'complete' completion possible. Use "-o nospace" for proper
+# handling of path completion (only available in newer bash).
+
+#log DEBUG "setup ssh completion...."
+for command in ssh # scp ssh-keygen
+do
+  log DEBUG "setup completion (ssh): $command $*"
+
+  complete -o bashdefault -o default -o nospace -F _ssh $command 2>/dev/null \
+   || complete            -o default -o nospace -F _ssh $command 2>/dev/null \
+   || complete            -o default            -F _ssh $command 2>/dev/null \
+   || complete                                  -F _ssh $command
+done
+
+

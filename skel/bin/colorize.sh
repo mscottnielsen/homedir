@@ -65,8 +65,10 @@ pager_env() {
 
 
 colorize() {
-  # colorize 'diff' output, optionally piping through $PAGER
   # usage: diff foo bar | colorize
+  # colorize 'diff' output, optionally piping through $PAGER
+
+  local opt OPTIND OPTARG
 
   eval $( pager_env )   # set pager
   NL=""                 # optional newline's NL="\n"

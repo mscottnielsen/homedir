@@ -15,15 +15,7 @@
 
 ##########################################################################
 # enable logging
-if [ ${HOMEDIR_BIN_COMMON_LOG_INIT:-0} -eq 0 ]; then
-  log() { :; }   # default no-op logger as fallback
-  [ -f $HOMEDIR_BIN/common/log.sh ] \
-    && . $HOMEDIR_BIN/common/log.sh \
-    || printf "** error: unable to load common logging library: $HOMEDIR_BIN/common/log.sh\n" 1>&2
-else
-  log DEBUG "** (${BASH_SOURCE[0]}) bash_completion_psx : logging already configured LOG=$LOG"
-fi
-
+[ ${HOMEDIR_BIN_COMMON_LOG_INIT:-0} -eq 0 -a -f $HOMEDIR_BIN/common/log.sh ] && . $HOMEDIR_BIN/common/log.sh
 
 ##########################################################################
 ## Notes on completion options:
@@ -108,7 +100,7 @@ _psx() {
 #log DEBUG "setup psx completion...."
 for command in psx pgrep pkill killall
 do
-  log DEBUG "setup psx completion: $command $*"
+  log DEBUG "setup completion (psx): $command $*"
 
   complete -o bashdefault -o default -o nospace -F _psx $command 2>/dev/null \
    || complete            -o default -o nospace -F _psx $command 2>/dev/null \

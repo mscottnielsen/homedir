@@ -90,26 +90,20 @@
 # look in pwd to convert "foo/foo/*" into "foo/*".
 #
 de_duplicate() { # {{{1
-  local suffix dir tmp_dir file tmp_file ret=0
+  local arg dir dir_dir suffix tmp_dir tmp_file
 
-  #printf "\n== de_duplicate: allow dupes? $allow_dup_dir  args: $@\n"
   [ $# -eq 0 -o "$allow_dup_dir" = "true" ] && return 0
-  #printf "** removing duplicate dirs for files: $@\n"
 
-  for arg
-  do
-    if [ -f $arg ]; then
+  for arg; do
+    if [ -f "$arg" ]; then
       suffix=$(get_suffix "$arg")
-      dir=$(basename $arg .${suffix})
+      dir=$(basename "$arg" .${suffix})
     else
       dir=$arg
     fi
 
     dir_dir="${dir}/${dir}"
-    tmp_dir="${dir}/${dir}.$$"
-
-    #printf "\n==pwd: $(pwd)\n De-duplicate directory: $dir\n"
-    #printf " test: $(file "$dir_dir")\n"  #> /dev/null
+    tmp_dir="${dir_dir}.$$"
 
     if [ -d "$dir_dir" ]; then
       printf " ** remove duplicate directory: $dir_dir\n" > /dev/null
@@ -121,8 +115,8 @@ de_duplicate() { # {{{1
 
       for tmp_file in "$tmp_dir"/* "$tmp_dir"/.??*
       do
-        if [ -e "$tmp_file" ] ; then
-           #printf "*** moving from subdir: $(basename $tmp_file)\n"
+        if [ -e "$tmp_file" -o -h "$tmp_file" ] ; then
+           #printf "*** moving from subdir: $(basename "$tmp_file")\n"
            #printf "      moving: $tmp_file =to=> $dir\n"
            mv -i "$tmp_file" "$dir"
         fi
@@ -142,15 +136,21 @@ usage() {
   cat <<USAGE_EOF
 
   Usage: ${BASH_SOURCE[0]##*/} {archive...}
-    Extracts any archive file into a directory having the same name as the
-    archive.  Also extracts any top-level nested archives as well.
-    Removes meaningless duplicate directories as well.
-    Works with achive types {zip, tar, tar.gz, rar, jar, 7z, ...}
+    Extracts archives into a directory with the same base-name as the original
+    archive. Also extracts top-level nested archives (foo.zip containing bar.tar
+    will create: foo/bar/{files}), and removes meaningless duplicate directories
+    (bar.zip containing *only* bar.tar will create: bar/{files}).
+    Works with most achive types {zip, tar, tar.gz, rar, jar, 7z, ...}
 
     Examples:
       Given foo.zip, containing bar/file* extract to foo/bar/file*.
       Given foo.tgz, containing foo/file* extract to foo/file*.
       Given foo.zip, containing bar.tar,  containing baz/*, extract to foo/bar/baz/*
+
+    Caveats:
+      The original archive is left intact; in some cases, the archive may be
+      copied into a temp directory and then extracted. For large files, this may
+      be undesirable.
 
 USAGE_EOF
   return 0
@@ -165,6 +165,9 @@ get_suffix() {
 }
 
 ext2dir () {
+  # nested archives to expand (if inside another archive)
+  local expand_L2="*.zip *.ZIP *.jar *.tgz *.bz2 *.7z* *.7Z* *.gz *.GZ *.tar *.TAR *.odm *.ott *.rar"
+
   local use_copy=false        # copy archive to decompress, leaving original intact
   local exploder=             # utility to use to decompress (tar, jar, gzip, bzip2, ...)
   local suffix=               # gz, tar, jar, tar.gz (w/o ".")
@@ -173,63 +176,53 @@ ext2dir () {
   local ls_opts=              # command-line options to exploder for listing contents
   local dir=                  # dir to extract into: basename of archive (w/o suffix)
   local mytar=                # prefer gnu tar, if exists
+
   type gtar >/dev/null 2>&1 && mytar=gtar || mytar=tar
 
-  # nested archives to expand (if inside another archive)
-  local expand_L2="*.zip *.ZIP *.jar *.tgz *.bz2 *.7z* *.7Z* *.gz *.GZ *.tar *.TAR *.odm *.ott *.rar"
-
   ##########################################################################
-  # do list contents of archive (top level, only)
+  # list contents of archive (top level, only)
   do_list() { # {{{1
-     [ $# -eq 0 ] && return 1
-     # by default use global variables "ls_opts" and "args", unless given arguments
-     f=$1 && shift
-     [ $# -gt 0 ] && ls_opts=$1 && shift
-     [ $# -gt 0 ] && args="$@"
+     local f opt arg
+     [ $# -eq 0 ] && return 1 || { f=$1; shift; }
+     [ $# -gt 0 ] && opt=$1 && shift
+     [ $# -gt 0 ] && arg="$@"
 
-     extfile=$f
-     #echo "** Running: $exploder $ls_opts $extfile $args"
-     $exploder $ls_opts $extfile $args
+     $exploder $opt "$f" $arg
   } #}}}
 
   ##########################################################################
-  # Decompress the given file, leaving the original file intact, using the
-  # given options and arguments. Uses the current value of "exploder" to
-  # perform the decompression. Extracts the file into the directory "$dir".
+  # unzip/untar/explode the given file, leaving the original intact.
+  # Use "$exploder" to perform the decompression, into directory "$dir".
   #   Usage: do_extract {file} [opts] [args...]
-  #
   do_extract() { # {{{1
-     [ $# -eq 0 ] && return 1
+     local extfile f opt arg
+     [ $# -eq 0 ] && return 1 || { f=$1; shift; }
+     [ $# -gt 0 ] && opt=$1 && shift
+     [ $# -gt 0 ] && arg="$@"
 
-     # by default, don't copy; otherwise, is set to "cp" if necessary to copy an
-     # archive to avoid a destructive operation (e.g., gunzip on a gz file)
+     extfile="../$f"
      do_copy_cmd="echo"
      do_copy_arg=""
 
-     # by default use global variables "opts" and "args", unless given arguments
-     f=$1 && shift
-     [ $# -gt 0 ] && opts=$1 && shift
-     [ $# -gt 0 ] && args="$@"
-
-     extfile="../$f"
-     [ "$use_copy" = "true" ] && do_copy_cmd="cp" && do_copy_arg="." && extfile=$f
+     # set cmd="cp" if necessary to avoid destructive operation (eg, gunzip)
+     [ "$use_copy" = "true" ] && { do_copy_cmd="cp" ; do_copy_arg="." ; extfile=$f; }
 
      # copying is expensive, (hard) linking isn't always an option
      # (gzip error: "${extfile}.gz has 1 other link  -- unchanged")
-     # [ "$use_copy" = "true" ] && do_copy_cmd="ln" && do_copy_arg="." && extfile=$f
+     # [ "$use_copy" = "true" ] { do_copy_cmd="ln" ; do_copy_arg="." ; extfile=$f; }
 
      mkdir -p "$dir"
      test -d "$dir" \
        && cd "$dir" > /dev/null \
        && printf "==Extracting $f\n" \
        && printf " Created directory: \"$dir\"\n" \
-       || printf "** error creating directory \"$dir\"\n" 1>&2
+       || { printf "** error creating directory \"$dir\"\n" 1>&2; return 2; }
 
-     $do_copy_cmd "../$f" $do_copy_arg   > /dev/null  \
-       && $exploder $opts $extfile $args > /dev/null  \
-       && cd -                           > /dev/null  \
+     $do_copy_cmd "../$f" "$do_copy_arg"   > /dev/null  \
+       && $exploder $opt "$extfile" $arg > /dev/null  \
+       && cd -                             > /dev/null  \
        && printf " Extracted file ($exploder) \"$f\" into \"$dir\"\n"  \
-       || printf "** error extracting file ($exploder) \"$f\" into \"$dir\"\n" 1>&2
+       || { printf "** error extracting file ($exploder) \"$f\" into \"$dir\"\n" 1>&2; return 2; }
 
      test -d "$dir"
   } # }}}
@@ -241,8 +234,7 @@ ext2dir () {
   #   if result looks like foo/foo/{bar...}, remove the top-level dir.
   ##########################################################################
 
-  for file
-  do
+  for file ; do
     [ ! -f "$file" ] && printf "** File does not exist (skipping): \"$file\"\n" 1>&2 && continue
     exploder=
     opts=
@@ -250,7 +242,7 @@ ext2dir () {
     args=
     suffix=$(get_suffix "$file")
     basefile=${file%%.$suffix}
-    dir=$(basename $file .${suffix})
+    dir=$(basename "$file" .${suffix})
 
     # sanity check: truncate certain extensions from the output directory:
     # given file "foo.txt.gz" => use dir "foo", not "foo.txt";
@@ -347,29 +339,28 @@ ext2dir () {
         ;;
     esac
 
-    type $exploder >/dev/null 2>&1 \
-      || ( printf "** Error: command not found: ${exploder}\n" 1>&2 && return 2 )
+    type "$exploder" >/dev/null 2>&1 \
+      || { printf "** Error: command not found: ${exploder}\n" 1>&2 ; return 2 ; }
 
     if [ "$list_only" = "true" ]; then
       # just list archive contents
-      do_list $file $ls_opts $args
+      do_list "$file" $ls_opts $args
     else
       # extract this archive AND extract certain types of nested archives
-      do_extract $file $opts $args \
+      do_extract "$file" $opts $args \
         && (cd "$dir" \
               && for x in ${expand_L2}
                  do
-                   [ -f $x ] && ext2dir $x
+                   [ -f "$x" ] && ext2dir "$x"
                  done
                  cd - >/dev/null) \
-        && de_duplicate $dir
+        && de_duplicate "$dir"
     fi
   done
 }
 
 ############################################################################
-# can also just use (for a single archive):
-#  file-roller -h "$FILENAME"   # extracts archive "here"
+# Alternatively, for a single file (extracts "here"): file-roller -h "$FILENAME"
 run_gui() {
   #IFS=$'\n'
   for FILENAME in $NAUTILUS_SCRIPT_SELECTED_FILE_PATHS
@@ -378,7 +369,7 @@ run_gui() {
       type ext2dir
       ls -l "$FILENAME"
       dir="$PWD"
-      ( cd $(dirname $FILENAME) && ext2dir $(basename "$FILENAME") )
+      ( cd $(dirname "$FILENAME") && ext2dir $(basename "$FILENAME") )
       cd "$dir"
   done
 }
@@ -392,17 +383,19 @@ run_extract_archives() {
   fi
 }
 
+
 ############################################################################
 # main
 ############################################################################
+#set -x
 
 list_only=false       # only list files in archive, don't extract
 allow_dup_dir=false   # leave duplicate directories, e.g., foo/foo/file1.txt
 rm_dup_dir_only=false # just run de-duplicate (debugging)
 from_gui=false        # if gnome, allow the script to be run from a nautilus shortcut
+OPTIND=1
 
-while getopts dDghl opt
-do
+while getopts dDghl opt ; do
   case "$opt" in
   d) allow_dup_dir=true ;;
   D) rm_dup_dir_only=true ;;
@@ -418,9 +411,4 @@ then
   run_extract_archives "$@"
 fi
 
-# # preferable to de-duplicate after exploding everything
-# if [ "$allow_dup_dir" = "false" ]
-# then
-#   de_duplicate "$@"
-# fi
-#
+

@@ -75,6 +75,7 @@ do_backup=true      # create a backup of /etc/hosts in /tmp
 do_log=true         # writing debug msgs logfile, $log
 do_proxy=true       # do set proxy after updating /etc/hosts
 use_proxy=manual    # proxy predefined setting
+OPTIND=1
 
 while getopts BhLPp: opt; do
   case "$opt" in

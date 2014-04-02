@@ -2,7 +2,7 @@
 # A cross-platform bash environment, customizable and extendable but also under
 # version control; intended to be shared across hosts, OS's and even users.
 #
-# A single unversioned file "local.env" may be used for customizatino for the
+# A single unversioned file "local.env" may be used for customization for the
 # current user. All other config is under version control, loaded at login
 # based on hostname, OS, username, and even for individual applications.
 #
@@ -12,8 +12,9 @@
 ###############################################################################
 #set -x
 this=profile
-HOMEDIR_VER=723
+HOMEDIR_VER=866
 HOMEDIR_LOG=$HOME/.h_log
+#LOG_LEVEL=DEBUG
 
 # preferred shell, if default is sh/csh/ksh (and you can't change it)
 RUN_SUB_SHELL=${RUN_SUB_SHELL:-"/bin/bash -i"}; export RUN_SUB_SHELL
@@ -139,7 +140,7 @@ esac
 #  * .bashrc => load per-user and per-os/host env settings
 
 ###############################################################################
-# run subshell if necessary to use preferred shell (e.g., RUN_SUB_SHELL=bash),
+# Run subshell if necessary to use preferred shell (e.g., RUN_SUB_SHELL=bash),
 # a work-around if you can't change your default shell (e.g., corp. intranets)
 RUN_SUB_SHELL_OK=99
 [ "$RUN_SUB_SHELL" != "" ] \

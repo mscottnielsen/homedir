@@ -39,11 +39,10 @@ USAGE_EOF
  return 0
 }
 
-
-
 #RMT_HOSTS=${RMT_HOSTS:-"kabuki sfo-sun-01 omnibus bandi aixvm-03"}
-RMT_HOSTS=${RMT_HOSTS:-"sfo31000 sfo31002 sfo31011"}
+RMT_HOSTS=${RMT_HOSTS:-"localhost"}
 
+# temp file, file name parameterized, accessed via getTmp function
 tmpfile=/tmp/run_cmd.$$.tmpfile.%s.txt
 
 [ "$VERBOSE" = "true" -o "$VERBOSE" = "1" ] && verbose=true || verbose=false
@@ -79,7 +78,7 @@ getCount() {
 #
 cleanTmp() {
   f=$(getTmp $@)
-  [ -e $f ] && printf "...removing tempfile: $f" && rm -f $f
+  [ -e $f ] && { rm -f $f || printf "warning: unable to remove tempfile: $f\n" ; }
 }
 
 # Storing counters in tmpfiles: set and/or increment.
@@ -113,10 +112,11 @@ signal_recv() {
   sig_count=$(updateCount sig)
   tot_count=$(updateCount tot)
 
-  printf "\n...interrupt received (sig_count=$sig_count, consecutive=$tot_count)\n"
-  [ "$sig_count" -gt 1 ] && [ "$tot_count" -gt 1 ] && echo "...exiting (intrp=$tot_count)" && exit 2
+  echo "...interrupt received (sig_count=$sig_count, consecutive=$tot_count)" 1>&2
+  [ "$sig_count" -gt 1 ] && [ "$tot_count" -gt 1 ] && echo "...exiting (intrp=$tot_count)" 1>&2 && exit 2
 
-  printf "...continuing. To terminate, interupt again (immediately), or send:  kill -s USR1 $$ \n"
+  echo "...continuing. To terminate, interupt again (immediately), or send:  kill -s USR1 $$" 1>&2
+  return 0
 }
 
 cleanup() {
@@ -127,7 +127,7 @@ cleanup() {
 
 run_rmt_cmd() {
   local ssh_opt='StrictHostKeyChecking no'
-  local ssh_cmd='ssh -o'
+  local ssh_cmd='ssh -Y -o'
   local cmd="$@"
 
   if $verbose ; then

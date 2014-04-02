@@ -73,8 +73,8 @@ debug=0
 [ "$debug" = "1" ] && run=echo || run=
 [ "$debug" = "1" ] && echo "## ***** WARNING:  debug mode enabled, not Creating any files ******" 1>&2
 
-while getopts ad:filtvx opt
-do
+OPTIND=1
+while getopts ad:filtvx opt ; do
   case "$opt" in
   a)
     do_filename=1    &&  log "info: (-f) include original filename in new file."
@@ -129,9 +129,7 @@ do
     echo "** unknown option, $opt" 1>&2 && usage && exit 2
     ;;
   esac
-done
-
-shift $((OPTIND-1)); OPTIND=1
+done; shift $((OPTIND-1)); OPTIND=1
 
 [ "$do_link" = "0" ] && printf "** warning: Not creating links, just printing pdf info to stdout.\n**          Use '-l' to create symbolic links.\n**          Use '-a' for links w/ filenames and generated text files."
 [ "$do_link" = "1" -a "$do_filename" = "0" ] && echo "** warning: links won't be created unless '-f' is also specified"

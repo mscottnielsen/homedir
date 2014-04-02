@@ -14,6 +14,9 @@ set TERMCAP=/etc/termcap
 :: add in cygwin/bin to allow calling cygwin utils from cmd.exe
 set PATH=%PATH:mksnt=no-mksnt;%
 set PATH=C:\cygwin\bin;%PATH%
+if not exist C:\cygwin64 goto NO_CYGWIN64_PATH
+set PATH=C:\cygwin64\bin;%PATH%
+:NO_CYGWIN64_PATH
 
 
 :: Reset MKS settings to cygwin values. Setting $HOME can be problematic, since it varies
@@ -21,7 +24,10 @@ set PATH=C:\cygwin\bin;%PATH%
 :: shown; just un/comment preference. Example converts {user} to lowercase, just in case.)
 set SHELL=/bin/bash
 set HOME_BASE=/home
-set HOME_BASE=/cygdrive/c/Users
+
+:: *** uncomment this to use HOME as c:/Users/{username} ***
+::set HOME_BASE=/cygdrive/c/Users
+
 set HOME=%HOME_BASE%/%USERNAME%
 
 :: assign HOME to result of script tolower.bat (uses cygwin 'tr', found in PATH)

@@ -15,7 +15,9 @@ alias la='ls -lA'
 alias ll='ls -l'
 alias l='ls -l'
 alias lm='ls -l | more'
-alias lt='ls -ltr'
+alias lt='ls -lt'
+alias ltr='ls -ltr'
+lg() { ls -lA | egrep ${@:-.}; }
 
 # file sizes... list files, recursively, and sort based on file size (largest, last)
 alias lsort="find . -type f -printf '%k\t%s\t%u\t%f\t%h\n' | sort -n"
@@ -30,15 +32,17 @@ alias c='clear'
 
 # alias for hgrep, if possible with egrep.
 # if no hgrep and egrep
+unalias hgrep 2>/dev/null 1>&2
 if ! type hgrep 2>/dev/null 1>&2
 then
   if echo . | egrep --color=auto '.' 2>/dev/null 1>&2
   then
-    hgrep () { egrep --color=auto "$@" ;  }
+    hgrep () { egrep --color=auto "$@"; }
   else
-    alias hgrep=egrep
+    hgrep() { egrep "$@"; }
   fi
 fi
+#export hgrep
 
 alias eg='egrep --color=always'     # use color with more/less, too
 
@@ -61,9 +65,9 @@ cdr() {
 homedir_version() {
   [ "$#" -eq 0 ] && echo ${HOMEDIR_VER:-"1"} && return 0
 
-  local ver opt OPTIND OPTARG
-  local b=$(readlink -e $HOME/.bashrc)
-  local p=$(readlink -e $HOME/.profile)
+  local opt OPTIND OPTARG
+  local b=$(readlink -f $HOME/.bashrc)
+  local p=$(readlink -f $HOME/.profile)
   local dir=${b%/*}
 
   usage() {
@@ -126,19 +130,15 @@ homedir_version() {
 }
 
 ############################################################################
-# java related:
 # start a new shell, set to a particular version of java (path will
 # be correctly setup in .bashrc)
-alias java7='JAVA_HOME=$JAVA7_HOME bash'
-alias java6='JAVA_HOME=$JAVA6_HOME bash'
 alias java5='JAVA_HOME=$JAVA5_HOME bash'
-alias java14='JAVA_HOME=$JAVA14_HOME bash'
+alias java6='JAVA_HOME=$JAVA6_HOME bash'
+alias java7='JAVA_HOME=$JAVA7_HOME bash'
+alias java8='JAVA_HOME=$JAVA8_HOME bash'
 
-# fire up beanshell
-#   note: just dumped jar into java1.4.2_04/jre/lib/ext
-alias bsh="java bsh.Console &"
-alias bshi="java bsh.Interpreter"
-
+############################################################################
+alias gr=gradle
 
 ############################################################################
 # start gvim, optionally embiggened or with wider-view/smaller-font (logs);
@@ -174,6 +174,8 @@ ftn_gw() {
 alias g=ftn_g
 alias g2=ftn_g2
 alias gw=ftn_gw
+alias vimd='vim -c "set background=dark"'
+
 
 
 ######################################
@@ -208,14 +210,20 @@ psx () {
 
 ############################################################################
 # recycle bin
-del () {
-  [ $# -eq 0 ] && echo -e "usage: del [files|directories]" && return 2
+del() {
+  local trash=$HOME/.trash
+  local maxsize=600
+  [ "${TRASH_DIR}" != "" ] && trash=$TRASH_DIR
+  [ $# -eq 0 -o ${1:0:1} = "-" ] \
+      && printf "usage: del [file|directory]\n move files to trash bin: $trash\n" \
+      && return 2
+  [ -d "$trash" ] || mkdir $trash
 
-  [ ! -d ~/.trash ] && mkdir ~/.trash
-  for x
-  do
-   newname=${x//\//-}   # global replace "/"  with "-"
-   mv -i "$x" ~/.trash/${newname}.$$
+  for x; do
+   newname=$(date '+%Y-%m-%d')__${x//\//__}.$$   # global replace "/" in path
+   mv -i "$x" $trash/${newname}
+   (( $(du -sk $trash | cut -f1) > 1024 * $maxsize )) \
+      && printf "** warning: trash exceeds ${maxsize}MB: $trash\n"
   done
 }
 
@@ -280,7 +288,8 @@ unaliasall () {
 # {manpage} can be in the format {manpage}[.section], e.g., cat.1, link.1 or link.3p
 # if no section given, assume section 1.
 dump_man() {
-  local opt OPTIND OPTARG outfile tmpfile page sect=1
+  local opt OPTIND OPTARG
+  local outfile tmpfile page sect=1
 
   while getopts S:o: opt; do
     case "$opt" in
@@ -317,8 +326,8 @@ dump_man() {
 ############################################################################
 # given (list) of directories, show their (cumulative) sizes, sorted
 big() {
-  local verbose=true append=false to_file=false ret=0
   local opt OPTIND OPTARG
+  local verbose=true append=false to_file=false ret=0
   local f="disk-usage-$(date '+%Y-%b-%d').txt"
 
   usage() { cat<<EOF
@@ -448,12 +457,14 @@ is_member() {
 ############################################################################
 # make a directory with a timestamp in it
 mkdatedir () {
-  [ $# -lt 1 ]  && echo "usage: datedir name, creates name-{timestamp}" && return 2
+  [ $# -eq 0 -o "${1:0:1}" = "-" ]  \
+     && printf "\nUsage: mkdatedir {name}\n   creates directory with the current date in the name, e.g: {Year-Month-Day}-{name}\n\n" \
+     && return 2
 
   local d="$(date '+%Y-%b-%d')-$1"     # eg, 2006-Nov-20-{foobar}
   echo $d
-  [ -f "${d}" -o -d "${d}" ] && mv $d ${d}.old      # could move $d into existing dir...!
-  mkdir $d
+  [ -f "${d}" -o -d "${d}" ] && mv -i $d ${d}.old
+  mkdir $d && cd $d
 }
 
 ############################################################################
@@ -511,8 +522,8 @@ listf () {
 #     $  eval $(diff -r -q dir1 dir2 | diff_filter  -o 'ls -ld' -t 'kdiff3 -m' -- -o '\2.new')
 #
 diff_filter() {
-  local merge_args etc merge_tool='diff' only_in_cmd='ls -ld'
   local opt OPTIND OPTARG
+  local merge_args etc merge_tool='diff' only_in_cmd='ls -ld'
 
   usage() { cat<<EOF
    ##  Usage: diff -r -q ... | diff_filter [-o {only_in_cmd} ] [-t {merge_tool}] [-- {merge_cmd_opts}]
@@ -546,41 +557,48 @@ EOF
 ############################################################################
 # convert to upper/lowercase, copy to x buffer
 ############################################################################
-
-unalias to_lower 2>/dev/null  # (temporarily) previously was alias
-
 convert_case() {
-  local mytr=${TR:-"tr"} out=cat
-  local upper='[A-Z]' lower='[a-z]'
+  #set -x
+  local opt OPTIND OPTARG
+  local mytr=${TR:-"tr"} upper='[A-Z]' lower='[a-z]'
   local from=$upper to=$lower
 
-  subst() { cat; }
+  usage() { cat<<EOF_USAGE
+    Convert to upper/lowercase, copy to clipboard, reformat text.
+    Usage:  [-l|-u|-s|-c|-h] {desc}
+      -c  save output to clipboard (-C to leave newlines)
+      -h  print usage
+      -l  convert to lowercase/uppercase
+      -u  convert to lowercase/uppercase
+      -s  replace spaces with '_'
+EOF_USAGE
+  }
 
-  while getopts lusx opt ; do
+  do_subst() { cat; }
+
+  do_output() { cat; }
+
+  while getopts cClusx opt ; do
     case $opt in
-      l) from=$upper; to=$lower
-         ;;
-      u) from=$lower; to=$upper
-         ;;
-      s) subst() { sed 's/ /_/g'; }
-         ;;
-      x) out="xclip -selection clipboard"
-         ;;
-      *) printf "** error: unknown option converting upper/lower-case\n"
-         return 2
-         ;;
+      c) do_output() { tr -d '\n' | tr -d '\r' | xclip -i -selection clipboard ; } ;;
+      C) do_output() { xclip -i -selection clipboard ; } ;;
+      l) from=$upper; to=$lower ;;
+      u) from=$lower; to=$upper ;;
+      s) do_subst() { sed 's/ /_/g'; } ;;
+      h | *) usage; return 2;;
     esac
   done; shift $((OPTIND-1)); OPTIND=1
 
   if [ $# -eq 0 ]; then
-    $mytr "$from" "$to" | subst | $out
+    $mytr "$from" "$to" | do_subst | do_output
   else
-    echo "$@" | $mytr "$from" "$to" | subst | $out
+    echo "$@" | $mytr "$from" "$to" | do_subst | do_output
   fi
+  #set +x
 }
 
 to_lower() {
-  convert_case $@
+  convert_case -l $@
 }
 
 to_upper() {
@@ -591,7 +609,7 @@ to_upper() {
 # e.g., convert "one+two+three" => [[one two three]]
 wiki_clip () {
  conv_page() {
-   tr '[+]' '[ ]' | sed 's/.*/\[\[&\]\]/' | xclip -selection clipboard
+   tr '[+]' '[ ]' | sed 's/.*/\[\[&\]\]/' | xclip -i -selection clipboard
  }
  [ $# -eq 0 ] && conv_page || echo "$@" | conv_page
 }
