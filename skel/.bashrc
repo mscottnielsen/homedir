@@ -11,10 +11,10 @@
 # shell isn't allowed to be changed.) The ".profile" just launches bash.
 ###############################################################################
 #set -x
-this=bashrc
 HOMEDIR_VER=866
 HOMEDIR_LOG=$HOME/.h_log
 #LOG_LEVEL=DEBUG
+export HOMEDIR_VER HOMEDIR_LOG VERBOSE HOSTNAME PATH PS1 TR
 
 h_tstamp() {
   local ts=$(date '+%s' 2>/dev/null)
@@ -22,6 +22,7 @@ h_tstamp() {
   printf "$ts"
 }
 
+h_this=bashrc
 ts_start=${ts_start0:-$(h_tstamp)}         # measure init time (from .profile, if set)
 [ -f $HOME/.verbose_login ] && VERBOSE=1   # optional verbose logging
 sh_type=$(echo "$0" | sed "s/^.*[-\/]//")  # get sh/ksh/bash not {-bash, /bin/bash,...}
@@ -43,8 +44,8 @@ export -f h_log
 export -f h_tstamp
 
 # avoid /etc/{profile,bashrc} if running remote ssh command, to avoid dynamic login menus
-h_log "loading .${this} v=$HOMEDIR_VER, ${TERM}, BASH_SOURCE=${BASH_SOURCE},\$0=${0}, SHELL=${SHELL}\n"
-[ ${sh_type} = "bash" -a "$TERM" != "dumb" -a "$TERM" != "" ] && [ -f /etc/${this} ] && . /etc/${this} >/dev/null 2>&1
+h_log "loading .${h_this} v=$HOMEDIR_VER, ${TERM}, BASH_SOURCE=${BASH_SOURCE},\$0=${0}, SHELL=${SHELL}\n"
+[ ${sh_type} = "bash" -a "$TERM" != "dumb" -a "$TERM" != "" ] && [ -f /etc/${h_this} ] && . /etc/${h_this} >/dev/null 2>&1
 
 if [ "$TR" = "" -a "$(uname)" = "SunOS" ]; then  # find working 'tr' (Solaris)
   [ "$TR" = "" -a -f /usr/xpg6/bin/tr ] && TR=/usr/xpg6/bin/tr
@@ -54,7 +55,6 @@ fi
 
 PS1='\n\u@\h(\s[\l]) \w>\n\!$ '   # simple default, reset later
 
-export HOMEDIR_VER HOMEDIR_LOG VERBOSE HOSTNAME PATH PS1 TR
 
 ###############################################################################
 # Set env vars w/ uniform cross-platform case & punctuation to identify platform:
@@ -155,11 +155,11 @@ export HOMEDIR HOMEDIR_BIN HOMEDIR_ENV HOMEDIR_USER_ENV HOMEDIR_HOST_ENV
 [ -f $HOMEDIR_ENV/setup-app.env ] && . $HOMEDIR_ENV/setup-app.env
 
 # add various $HOME bin dirs to PATH (using "cd -P", in case no "readlink")
-var=$(for d in "$HOME"/{,usr/,opt/}bin $(cd -P "$HOMEDIR_HOST_ENV" && cd ../bin && pwd)
+var=$(for d in "$HOME"/{,usr/,opt/}bin $(cd -P "$HOMEDIR_HOST_ENV"/bin 2>/dev/null && pwd)
       do
         test -d "$d" && echo "$d"
       done | paste -s -d: - ) # 2>/dev/null )
 [ ${#var} -gt 2 ] && PATH="${var}":"$PATH"
 
-h_log "loaded .${this} v=$HOMEDIR_VER - done\n\n"
+h_log "loaded .${h_this} v=$HOMEDIR_VER - done\n\n"
 

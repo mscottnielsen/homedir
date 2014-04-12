@@ -11,10 +11,10 @@
 # shell isn't allowed to be changed.) The ".profile" just launches bash.
 ###############################################################################
 #set -x
-this=profile
 HOMEDIR_VER=866
 HOMEDIR_LOG=$HOME/.h_log
 #LOG_LEVEL=DEBUG
+export HOMEDIR_VER HOMEDIR_LOG VERBOSE HOSTNAME PATH PS1 TR
 
 # preferred shell, if default is sh/csh/ksh (and you can't change it)
 RUN_SUB_SHELL=${RUN_SUB_SHELL:-"/bin/bash -i"}; export RUN_SUB_SHELL
@@ -26,6 +26,7 @@ h_tstamp() {
   printf "$ts"
 }
 
+h_this=profile
 ts_start0=$(h_tstamp)                      # measure init time (from .profile, if set)
 [ -f $HOME/.verbose_login ] && VERBOSE=1   # optional verbose logging
 sh_type=$(echo "$0" | sed "s/^.*[-\/]//")  # get sh/ksh/bash not {-bash, /bin/bash,...}
@@ -44,8 +45,8 @@ h_log() {
 }
 
 # avoid /etc/{profile,bashrc} if running remote ssh command, to avoid dynamic login menus
-h_log "loading .${this} v=$HOMEDIR_VER, ${TERM}, BASH_SOURCE=${BASH_SOURCE},\$0=${0}, SHELL=${SHELL}\n"
-[ ${sh_type} = "bash" -a "$TERM" != "dumb" -a "$TERM" != "" ] && [ -f /etc/${this} ] && . /etc/${this} >/dev/null 2>&1
+h_log "loading .${h_this} v=$HOMEDIR_VER, ${TERM}, BASH_SOURCE=${BASH_SOURCE},\$0=${0}, SHELL=${SHELL}\n"
+[ ${sh_type} = "bash" -a "$TERM" != "dumb" -a "$TERM" != "" ] && [ -f /etc/${h_this} ] && . /etc/${h_this} >/dev/null 2>&1
 
 if [ "$TR" = "" -a "$(uname)" = "SunOS" ]; then  # find working 'tr' (Solaris)
   [ "$TR" = "" -a -f /usr/xpg6/bin/tr ] && TR=/usr/xpg6/bin/tr
@@ -55,7 +56,6 @@ fi
 
 PS1='\n\u@\h(\s[\l]) \w>\n\!$ '   # simple default, reset later
 
-export HOMEDIR_VER HOMEDIR_LOG VERBOSE HOSTNAME PATH PS1 TR
 
 ###############################################################################
 # Set env vars w/ uniform cross-platform case & punctuation to identify platform:
