@@ -83,8 +83,9 @@ stacktrace () {
 # directory, should it not already exist.
 #
 _hashtab_dirname() {
+  # if multiple users on same host, .tmphash must be writable for all, or unique per user
   local ret tmpd=${TMPDIR:-"/tmp"}
-  local dir=${HASHDIR:-"$tmpd"}/.tmphash
+  local dir=${HASHDIR:-"$tmpd"}/.tmphash-"${LOGNAME:-$USER}"
   local user=user-${HASHDIR_USER:-"${LOGNAME:-$USER}"}
   local tty=$HASHDIR_TERM
   local name=
