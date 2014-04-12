@@ -31,7 +31,7 @@ EOF
 do_install_gitconfig() {
   local config="$HOME/.gitconfig"
   local temp_config="$HOME/.gitconfig.sample"
-  local new_config="${PWD}/$dir/.gitconfig.sample"
+  local new_config="${PWD}/skel/.gitconfig.sample"
   local current_config
   local user_name user_email
   local default_name default_email
@@ -74,7 +74,7 @@ do_install_gitconfig() {
 # way if there's a conflict, and create a symlink from $HOME to this 'skel'
 link_all_files() {
   local x h
-  for x in $PWD/$dir/.??* $PWD/$dir/* $PWD/../servers/host_env
+  for x in $PWD/skel/.??* $PWD/skel/* $PWD/../servers/host_env
   do
     [ ! -e $x ] && continue
     h=$home/$(basename $x)
@@ -124,11 +124,8 @@ do
   esac
 done; shift $((OPTIND-1)); OPTIND=1
 
-# historically, was 'homedir' in svn; now is 'skel' in git.
-[ -d $PWD/homedir ] && dir=homedir
-[ -d $PWD/skel ] && dir=skel
-[ ! -d "$dir" ] \
-    && printf "** Error: Directory not found: $dir\n" \
+[ ! -d skel ] \
+    && printf "** Error: Directory not found: \"skel\"\n" \
     && printf "** Run this script from directory: $(dirname $0)\n" \
     && exit 2
 
