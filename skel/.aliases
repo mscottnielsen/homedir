@@ -490,6 +490,36 @@ listf () {
   fi
 }
 
+#############################################################################
+# Generate commands to prepend various *_HOME vars to PATH; eg: PATH=$FOO_HOME/bin:$PATH
+# Prefer to set these in app-*.env files if they exist. This is just a fallback; eg:
+# given: $ APP_HOME_LIST=( ANT_HOME MAVEN_HOME M2_HOME VIM_HOME CMAKE_HOME HADOOP_HOME )
+# either: $ setup_app_home_path "${APP_HOME_LIST[@]}"
+#    or:  $ eval $( setup_app_home_path -v "${APP_HOME_LIST[@]}" )
+setup_app_home_path() {
+  #set -x
+  local quiet=true
+  [ $# -gt 0 -a "$1" = "-v" ] && quiet=false
+  hlist=("${@}")
+  for app_home in "${hlist[@]}" ; do
+    homeVAR=$(echo "$app_home" | sed 's/[()]//g')    # e.g., ANT_HOME
+    homeVAL=${!homeVAR}                              # e.g., /opt/ant (or unset)
+    homeVAL=${homeVAL//\\/\/}                        # c:\opt\ant => c:/opt/ant
+    homeVAL="${homeVAL%\/}"                          # remove any trailing "/"
+    if [ ${#homeVAL} -gt 0 ] ; then
+        #printf "${homeVAR}=\"${homeVAL}\", " >> $HOMEDIR_LOG 2>&1
+        eval export ${homeVAR}="${homeVAL}"
+        $quiet || echo "export ${homeVAR}=\"${homeVAL}\""
+
+        eval export PATH="${homeVAL}/bin:$PATH"
+        $quiet || echo "export PATH=\"${homeVAL}/bin\":\"$PATH\""
+    else
+      : #  || printf "(${homeVAR}), " >> $HOMEDIR_LOG 2>&1
+    fi
+  done
+  #set +x
+}
+
 
 ############################################################################
 # Transform the output from the command 'diff -r -q', so that it can be used
