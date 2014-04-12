@@ -1,13 +1,13 @@
 #!/bin/bash
 #
 ## Create symlinks from $HOME directory to individual dot-files in this directory.
-## The dot-files are intended mostly for bash, but other shells could be supported.
-## Includes 'bin' directory, bash competion scripts, various env files.
+## Creates links for $HOME/bin, .bashrc & .profile, and various per-user env files.
 ##
-## Run this script from the directory where the script is located.
+## Run this script in the directory where the script is located.
 ##
-## If there are conflicts with existing dot-files in your home directory: they may
-## be overwritten (-c), backed-up with timestamps (default), or left unchanged (-p).
+## If there are conflicts with existing dot-files in your home directory, they are
+## by default moved out of the way (not overwritten or deleted). Optionally, they may
+## be: overwritten (-c); backed-up with timestamps (default); or left unchanged (-p).
 ##
 
 usage() { cat<<EOF
@@ -32,9 +32,7 @@ do_install_gitconfig() {
   local config="$HOME/.gitconfig"
   local temp_config="$HOME/.gitconfig.sample"
   local new_config="${PWD}/skel/.gitconfig.sample"
-  local current_config
-  local user_name user_email
-  local default_name default_email
+  local current_config user_name user_email default_name default_email
 
   [ -h $temp_config -o ! -s $temp_config ] && rm -f $temp_config 2>/dev/null
   [ -f $temp_config ] && cp $temp_config ${temp_config}.old || cp $new_config $temp_config
@@ -59,9 +57,10 @@ do_install_gitconfig() {
     printf "** Sample gitconfig created:  $temp_config\n"
     printf "** Update with your name & email and copy to: ~/.gitconfig\n"
   else
-    printf "*************************************************************\n"
-    printf "** diff $temp_config $config\n\n"
+    printf "=============================================================\n"
+    printf "== diff $temp_config $config\n\n"
     diff -s $temp_config $config || {
+      printf "=============================================================\n"
       printf "\n** Overwrite existing \"$config\" with new \"$temp_config\"?\n"
       cp -i $temp_config $config
     }
@@ -73,7 +72,7 @@ do_install_gitconfig() {
 # for all files in 'skel', move old original file in $HOME out of the
 # way if there's a conflict, and create a symlink from $HOME to this 'skel'
 link_all_files() {
-  local x h
+  local f h x
   for x in $PWD/skel/.??* $PWD/skel/* $PWD/../servers/host_env
   do
     [ ! -e $x ] && continue
@@ -92,6 +91,16 @@ link_all_files() {
       printf "creating link: ln -s $x $h\n"
       ln -s $x $h
     fi
+  done
+
+  # copy example/foo.env.sample files to actual/foo.env;
+  # these are meant to be modified and unversioned.
+  for x in $PWD/skel/local.env.sample
+  do
+    [ ! -e $x ] && continue
+    f=$(basename $x .sample)
+    cp -i $x $home                        # the sample file
+    [ ! -f  $home/$f ] && cp $x $home/$f  # the actual file
   done
 }
 
