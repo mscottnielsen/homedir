@@ -1,33 +1,37 @@
 #!/bin/bash
-# Create meaningful filenames from pdf documents, by looking
-# at pdf contents, getting document title, and creating  a symlink
-# back to original file.
 
-default_outdir=linkdir
+########################################################################
+# Try to create meaningful filenames from pdf product documentation,
+# looking at file contents & metadata, and creating a symlink
+# from this new name back to the original file.
+########################################################################
+
+# (Hacked up to try to find meaningful names/titles from Oracle product docs)
+
+
+default_outdir=links
 
 usage() {
-  [ $# -gt 0 ] && printf "** error: $@  (...exiting).\n\n Usage: \n"
+  local ret=0
+  [ $# -gt 0 ] && ret=2 && printf "** error: $@  (...exiting).\n\n" 1>&2 && printf " Usage: \n"
 
   cat <<USAGE_EOF
-
-  Print out titles to the given pdf documents, optinally creating symlinks
-  for meaningful filenames to Oracle filenames.
+  Print out titles for given pdf documents, pulling metadata to generate the
+  names, optinally creating symlinks back to the original file.
 
   By default, just prints metadata, doesn't overwrite/create any files.
-
-  Use "-a" to create text files and symbolic links; use specific options
-  to do something more, well, specific.
+  Use "-a" to create plain text files for the pdf and make the symbolic links.
 
   Usage: $(basename $0) pdf_file
 
   Options:
      -a   sets a common set of all useful defaults: -f -l -t -x -d $default_outdir
      -d   output directory for links, text files (default="${outdir:-$default_outdir}")
-     -f   include original filename in result filename (default=no) (required if using "-l")
+     -f   include original filename in title (default=no) (required if using "-l", to avoid clashes)
      -l   create symlinks from original pdf file to longer filename (default=no) (requires also "-f")
      -i   create symlinks, ask before overwriting
-     -t   create text file (same name as pdf) (overwrites old text file)
-     -x   try harder to make a meaningful longer title (searches through pdf)
+     -t   create text file from pdf (same name as pdf, using txt extension).
+     -x   try harder to make a meaningful, longer title (searches through pdf)
      -v   verbose
 
   Examples:
@@ -35,7 +39,7 @@ usage() {
       $(basename $0) -a -d links *.pdf
 
 USAGE_EOF
-  exit 2
+  [ $ret -gt 0 ] && exit $ret || return $ret
 }
 
 get_sfx() {
@@ -52,12 +56,13 @@ log() {
   return 0
 }
 
-
+########################################################################
+# main
+########################################################################
 [ $# -eq 0 ] && usage "expecting arguments"
 type pdftk >/dev/null 2>&1 || usage "pdftk utility not installed / not found in the PATH. pdftk is required"
 type tr    >/dev/null 2>&1 || usage "'tr' utility not found. 'tr' is required"
-printf "foobar\ntest"  |  tr -d '\12' | grep foobartest > /dev/null || usage "compatible 'tr' utility not found ('tr -d' unsupported?)"
-# type testfoobar >/dev/null 2>&1 || usage "testfoobar not found in the PATH (forcing exit usage message: TESTING)."
+printf "foo\nbar" |tr -d '\12' |grep foobar > /dev/null || usage "compatible 'tr' not found ('tr -d' unsupported?)"
 
 do_link=0
 do_filename=0
@@ -122,17 +127,20 @@ while getopts ad:filtvx opt ; do
     ;;
 
   h)
-    usage && exit 2
+    usage && exit 0
     ;;
 
   *)
-    echo "** unknown option, $opt" 1>&2 && usage && exit 2
+    usage "** unknown option, $opt"
     ;;
   esac
 done; shift $((OPTIND-1)); OPTIND=1
 
-[ "$do_link" = "0" ] && printf "** warning: Not creating links, just printing pdf info to stdout.\n**          Use '-l' to create symbolic links.\n**          Use '-a' for links w/ filenames and generated text files."
-[ "$do_link" = "1" -a "$do_filename" = "0" ] && echo "** warning: links won't be created unless '-f' is also specified"
+[ "$do_link" = "0" ] \
+    && printf "** [warning] Not creating links, just printing pdf info to stdout (use '-h' for full usage).\n\n"
+
+[ "$do_link" = "1" -a "$do_filename" = "0" ] \
+    && printf "** [warning] Links won't be created unless '-f' is also specified.\n\n"
 
 for file
 do
@@ -146,8 +154,7 @@ done
 
 for file
 do
-  # print verbose pdf metadata info if desired
-  if [ "$verbose" = "1" ]; then
+  if [ "$verbose" = "1" ]; then     # print verbose pdf metadata info
     echo pdftk $file dump_data
     pdftk $file dump_data \
     | egrep '^InfoKey|InfoValue' \
@@ -190,15 +197,13 @@ do
 
     efname_len=${#efname}
     [ $efname_len -gt 140 ] \
-         && printf "** warning: name too long (len=$efname_len); $efname\n** warning: truncating name to 140 chars\n" \
+         && printf "** [warning] name too long (len=$efname_len); $efname\n** warning: truncating name to 140 chars\n\n" \
          && efname="${efname:0:140}"
 
     efname=$(basename $file .pdf)-${efname}.pdf       #efname=${dir}$(basename $file .pdf)-${efname}.pdf
     log "** debug: long name (len=$efname_len): $efname\n"
 
     if [ "$do_link" = "1" ]; then
-      #outdir_rel=$(echo "$outdir" | sed 's:[^/]*[^/]:..:g')
-      #echo "$outdir" | grep '\.\.'  && echo "** warning: using full paths for links" && outdir_rel=$PWD
       log "info: using full paths for links"
       outdir_rel=$PWD
 
@@ -210,11 +215,9 @@ do
       link_file="$efname"
       orig_file="$outdir_rel"/"$file"
 
-      # don't link if pdf is already a link, or efname is same as pdf
-      #[ ! -h "$file" -o "$file" = "$efname" ] && $run ln $ln_opts "$file" "$efname" || echo "not linking (ignoring)..." 1>&2
+      # don't link if pdf is already a link, or extended filename is same as pdf
       if [ ! -h "$file" -o "$file" = "$efname" ]; then
          [ ! -d $outdir ] && $run mkdir -p $outdir
-         #echo ln $ln_opts $file $efname 1>&2
          echo "linking: ln $ln_opts $orig_file $link_file" 1>&2
          ( $run cd $outdir && $run ln $ln_opts "$orig_file" "$link_file" && $run cd - >/dev/null)
       fi
