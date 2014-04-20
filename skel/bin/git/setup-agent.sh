@@ -4,12 +4,12 @@
 #
 #############################################################################
 # Alternatively, add this to .bashrc, setting the env vars as appropriate:
-# 
+#
 #  conf=$HOME/.ssh-agent.conf
-#  key=$HOME/.ssh/id_rsa.git.ipubs.us.oracle.com
-#  
+#  key=$HOME/.ssh/id_rsa.git.myhost.mydomain.com
+#
 #  test -e $conf && . $conf >/dev/null
-#  
+#
 #  ps -p ${SSH_AGENT_PID} >/dev/null || {
 #    ssh-agent >| $conf && . $conf >/dev/null
 #      ssh-add $key
