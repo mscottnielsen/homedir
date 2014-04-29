@@ -1,17 +1,30 @@
 homedir
 =======
 
-A generic home directory (bash), dot-files, scripts, etc, portable across OS's, suitable for mutliple users
+A generic home directory (for bash), including dot-files, scripts, etc, portable across OS's, suitable for mutliple users. Typical use-cases are:
+* a $HOMEDIR that is completely under version control, but does not need a separate file for every single user.
+* separate out per-host configuration from per-user configuration.
+* easily install, customize & configure temp virtual environments (VM's, containers), so they can have all the same functionality as your already-comforatable & customized $HOME.
+* training environments, e.g., with a dozen or so "student" accounts that need to be basically the same but allow customization
+* demo VM's that need a generic but fully functional $HOME, with all the functionality of your $HOME, but without the need to stop out your sensitive/personal info.
 
-To install & use, get the project (either git clone, or download the zip); and place it anywhere in your home directory. Symbolic links can then be created to point from your $HOME into the project:
+To achieve these goals, all $HOME configuration is refactored into separate files for:
+* generic configuration that applies to every user, every host, every OS (most things go here)
+* per-OS configuration (a lot of things go here: e.g., for Linux, SunOS, HP-UX, AIX, Cygwin, MacOSX, etc)
+* per-application configuration (these are small per-application configuration settings; e.g, a few env vars, functions)
+* per-host configuration (a few env vars set here, e.g,. to properly set the PATH)
+* per-user configuration (hardly anything goes here)
+* unversioned, local, current user-configuration (optional: maybe env vars storing passwords, usernames, etc)
 
-    ## get the project
+To install & use this $HOME dir configration, get the 'git' project (either via 'git clone', or download the zip); and place it anywhere in your home directory. Symbolic links will then be created during the "install" script, pointing from your $HOME into this project:
+
+    ## get the project (for example):
     $ mkdir ~/git-wk && cd ~/git-wk
     $ git clone https://github.com/mscottnielsen/homedir.git
     ...
     $ cd homedir
 
-    ## creates symlinks from ~/.bashrc, ~/.profile, etc to here.
+    ## this creates symlinks from ~/.bashrc, ~/.profile, etc to 
     ## existing files will be moved out of the way (renamed)
     ./setup-links.sh
 
