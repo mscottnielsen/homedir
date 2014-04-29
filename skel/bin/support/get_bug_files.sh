@@ -56,6 +56,56 @@ setup() {
   return 0
 }
 
+############################################################################
+# convert to upper/lowercase, copy to x buffer
+convert_case() {
+  #set -x
+  local opt OPTIND OPTARG
+  local mytr=${TR:-"tr"} upper='[A-Z]' lower='[a-z]'
+  local from=$upper to=$lower
+
+  usage() { cat<<EOF_USAGE
+    Convert to upper/lowercase, copy to clipboard, reformat text.
+    Usage:  [-l|-u|-s|-c|-h] {desc}
+      -c  save output to clipboard (-C to leave newlines)
+      -h  print usage
+      -l  convert to lowercase/uppercase
+      -u  convert to lowercase/uppercase
+      -s  replace spaces with '_'
+EOF_USAGE
+  }
+
+  do_subst() { cat; }
+
+  do_output() { cat; }
+
+  while getopts cClusx opt ; do
+    case $opt in
+      c) do_output() { tr -d '\n' | tr -d '\r' | xclip -i -selection clipboard ; } ;;
+      C) do_output() { xclip -i -selection clipboard ; } ;;
+      l) from=$upper; to=$lower ;;
+      u) from=$lower; to=$upper ;;
+      s) do_subst() { sed 's/ /_/g'; } ;;
+      h | *) usage; return 2;;
+    esac
+  done; shift $((OPTIND-1)); OPTIND=1
+
+  if [ $# -eq 0 ]; then
+    $mytr "$from" "$to" | do_subst | do_output
+  else
+    echo "$@" | $mytr "$from" "$to" | do_subst | do_output
+  fi
+  #set +x
+}
+
+to_lower() {
+  convert_case -l $@
+}
+
+to_upper() {
+  convert_case -u $@
+}
+
 ###########################################################################
 get_files() {
   local bugno=$1  #  e.g., bugno=14510723
@@ -114,10 +164,10 @@ else
 fi
 
 [ "$bugno" = "" ] && usage_exit "Expecting a bug number"
-outdir="bug_${bugno}"
+outdir="bug-${bugno}"
 
-[ $# -gt 0 ] && desc=$(echo "$*" | sed s'/ /_/g; s/__*/_/g')
-[ "$desc" != "" ] && outdir="${outdir}_${desc}"
+[ $# -gt 0 ] && desc=$(echo "$*" | to_lower | sed s'/ /_/g; s/[-_][-_]*/_/g; s/^[-_]//' )
+[ "$desc" != "" ] && outdir="${outdir}-${desc}"
 
 setup $outdir
 
