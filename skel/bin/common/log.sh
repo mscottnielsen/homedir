@@ -7,12 +7,16 @@
 #    log.sh [ERROR|INFO|DEBUG|TRACE] "message..."
 #
 # Example called as function (from another script):
-#   log() { :; }                 # no-op logger, in case log.sh not found
-#   . $HOMEDIR_BIN/common/log.sh # source this file
+#   . $HOMEDIR_BIN/common/log.sh # source this file (see below)
 #   LOG_LEVEL=INFO               # set level={NONE, ERROR, WARN, INFO, DEBUG}
-#   log INFO "msg..."            # log [ERROR|INFO|DEBUG|TRACE] ...
-#   echo "msg..." | log INFO
+#   log INFO "message..."        # arguments: log [ERROR|INFO|DEBUG|TRACE] ...
+#   echo "msg..." | log INFO     # or, log via stdin
 #
+# Note: to conditionally source this file to initialize the functions (maybe
+# speeding up initialization a bit):
+#  [ ${HOMEDIR_BIN_COMMON_LOG_INIT:-0} -eq 0 ] && source $HOMEDIR_BIN/common/log.sh
+#########################################################################
+
 # Environment variables:
 #   LOG_LEVEL={NONE|ERROR|WARN|INFO|DEBUG|TRACE}
 #        Determine which log messages are logged. Default: INFO
@@ -24,20 +28,13 @@
 #        Log to stderr, in addition to log file. Default is 0 (disabled).
 #   LOG_MAX_SZ=1024
 #        Size (in KB) to truncate log file. Default is 1024.
-#
-# Note: if not using the standard directory structure ($HOMEDIR_BIN):
-#   PROG_PATH=${BASH_SOURCE[0]}   # get calling script's path
-#   PROG_DIR=$(cd "${PROG_PATH%/*}")" 2>/dev/null 1>&2 && pwd)
-#   log() { :; }
-#   . $PROG_DIR/../common/log.sh 2>/dev/null
-#   LOG_LEVEL=INFO
-#
-#########################################################################
 
 : ${LOG_LEVEL:=INFO}     # set to: ERROR, WARN, INFO, DEBUG, TRACE (or NONE)
 : ${LOG_MAX_SZ:=1024}    # approx max log size in KB (infinite: LOG_MAX_SZ=0)
 : ${LOG_CONSOLE:=0}      # set LOG_CONSOLE=1 to log to stderr
 : ${LOG_TRUNC:=1}        # set LOG_TRUNC=0 to disable log truncation (or LOG_MAX_SZ=0)
+
+export LOG_USE_GNU_DATE  # if 'date' supports gnu options
 
 #########################################################################
 # standard format date, cross-platform test
@@ -208,7 +205,6 @@ _log_check_truncate() {
 #
 _log_output() {
   local log dir
-  #log=$(_log_getfname $@)
   _log_getfname $@ >/dev/null # sets $log env var, also sets $LOG_{script}
   dir=${log%/*}
   mkdir -p "$dir"
@@ -237,9 +233,11 @@ log() {
   local msg_level_str="INFO" msg_level_var="LOG_INFO" current_level_var="LOG_${LOG_LEVEL}"
   local current_level=${!current_level_var}
   [ "$current_level" = "" ] && current_level=1
+  local do_usage=false
 
   if [ $# -gt 0 ]; then
-    [ $# -ge 2 -a "$1" = "-F" -a "$2" != "" ] && fname_opt="-F" fname="$2" && shift 2
+    [ $# -ge 1 -a "$1" = "-h" ] && do_usage=true && shift
+    [ $# -ge 2 -a "$1" = "-F" -a "$2" != "" ] && { fname_opt="-F"; fname="$2"; shift 2; }
     if [ "$1" = "ERROR" -o "$1" = "WARN" -o "$1" = "INFO" -o "$1" = "DEBUG" -o "$1" = "TRACE" ]; then
         msg_level_str="${1}"
         msg_level_var="LOG_${1}"
@@ -249,6 +247,8 @@ log() {
   fi
 
   _log_getfname $fname_opt $fname "$@" >/dev/null  # init env var storing logfile name (can't init in subprocess)
+
+  $do_usage && printf "\nUsage: log {level} {message}\n  Log output to \"$log\"\n" 1>&2 && return 0
 
   # use awk to log via pipe (eg: echo 'some message' | log INFO), else use printf
   local fmt="[$(_log_stmp)|$msg_level_str|${FUNCNAME[1]}]"
