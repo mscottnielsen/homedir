@@ -11,7 +11,7 @@
 # shell isn't allowed to be changed.) The ".profile" just launches bash.
 ###############################################################################
 #set -x
-HOMEDIR_VER=866
+HOMEDIR_VER=920
 HOMEDIR_LOG=$HOME/.h_log
 #LOG_LEVEL=DEBUG
 export HOMEDIR_VER HOMEDIR_LOG VERBOSE HOSTNAME PATH PS1 TR

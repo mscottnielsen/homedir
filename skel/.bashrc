@@ -11,7 +11,7 @@
 # shell isn't allowed to be changed.) The ".profile" just launches bash.
 ###############################################################################
 #set -x
-HOMEDIR_VER=866
+HOMEDIR_VER=920
 HOMEDIR_LOG=$HOME/.h_log
 #LOG_LEVEL=DEBUG
 export HOMEDIR_VER HOMEDIR_LOG VERBOSE HOSTNAME PATH PS1 TR
@@ -139,27 +139,15 @@ esac
 ###############################################################################
 # Config is in $HOMEDIR, default relative to (real) .bashrc, else assume $HOME
 #
-export HOMEDIR HOMEDIR_BIN HOMEDIR_ENV HOMEDIR_USER_ENV HOMEDIR_HOST_ENV
+export HOMEDIR HOMEDIR_ENV
 [ "${BASH_SOURCE[0]}" != "" ] && HOMEDIR="$(dirname -- ${BASH_SOURCE[0]})" || HOMEDIR="$(dirname -- ${0})"
 [ ${#HOMEDIR} -le 2 ] || [ "$(dirname $HOMEDIR)" = "/" ] && HOMEDIR="$HOME"
 
+export HOMEDIR HOMEDIR_BIN HOMEDIR_ENV HOMEDIR_USER_ENV HOMEDIR_HOST_ENV USER_ORG
+
+[ -e $HOME/local.env ] && h_log "  " "loading local.env" && source $HOME/local.env && h_log " " "done.\n"
 : ${HOMEDIR_ENV:="$HOMEDIR/env"}
-: ${HOMEDIR_BIN:="$HOMEDIR/bin"}
-: ${HOMEDIR_USER_ENV:="$HOMEDIR/user_env"}
-: ${HOMEDIR_HOST_ENV:="$HOMEDIR/host_env"}
-
-# Setup env per-user/OS/host
-[ -f $HOMEDIR_ENV/setup-user.env ] && . $HOMEDIR_ENV/setup-user.env
-
-# Setup env for apps for this specific user (git, java, prompt, completion, etc).
-[ -f $HOMEDIR_ENV/setup-app.env ] && . $HOMEDIR_ENV/setup-app.env
-
-# add various $HOME bin dirs to PATH (using "cd -P", in case no "readlink")
-var=$(for d in "$HOME"/{,usr/,opt/}bin $(cd -P "$HOMEDIR_HOST_ENV"/bin 2>/dev/null && pwd)
-      do
-        test -d "$d" && echo "$d"
-      done | paste -s -d: - ) # 2>/dev/null )
-[ ${#var} -gt 2 ] && PATH="${var}":"$PATH"
+[ -f $HOMEDIR_ENV/setup.env ] && source $HOMEDIR_ENV/setup.env
 
 h_log "loaded .${h_this} v=$HOMEDIR_VER - done\n\n"
 
