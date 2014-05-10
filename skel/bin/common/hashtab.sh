@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-# Persistent hashmap, mapping keys to values, stored in files. Values
-# may optionally be calculated in the background and retrieved later.
-# Every hashtable is uniquely named, so separate hash maps may be kept.
-# Storage is (by default) separated per-user and per-tty.
+# Persistent hashmap, mapping keys to values, stored in files. Values may
+# be stored and calculated in the background to be retrieved later.
+# Every hashtable is uniquely named, so separate maps may be kept.
+# By default, storage is separated per-user and per-tty.
 #
-# Either use script, or the functions can be used directly. Specify the
-# command (put, get, rm, dump, keys), the hashtable name, and arguments.
+# The functions can be used directly. Specify the command (put/get/rm/dump/keys),
+# the hashtable name, and arguments.
 #  * hashtab new {map}
 #  * hashtab put {map} {key} {value} (alias: add)
 #  * hashtab rm  {map} {key}
@@ -421,6 +421,7 @@ hashtab() {
 
   Current storage directory: $(_get_hashtab $opt_term $opt_user "$name")
 EOF
+  return 0
   }
 
   [ $# -gt 0 -a "${1:0:1}" != "-" ] && cmd=$1 && shift
@@ -480,6 +481,9 @@ EOF
             ;;
       *) echo "** unknown command (cmd=$cmd options=\"$@\")";
             hashtab_usage
+            #echo =================
+            #. ~/bin/cstack.sh
+            #echo =================
             return 2
             ;;
   esac
