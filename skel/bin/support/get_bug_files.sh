@@ -75,7 +75,7 @@ convert_case() {
 EOF_USAGE
   }
 
-  do_subst() { cat; }
+  do_subst() { $mytr  '[,]' '[_]' ; }
 
   do_output() { cat; }
 
