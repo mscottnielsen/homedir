@@ -127,7 +127,8 @@ cleanup() {
 
 run_rmt_cmd() {
   local ssh_opt='StrictHostKeyChecking no'
-  local ssh_cmd='ssh -Y -o'
+  #local ssh_cmd='ssh -Y -o'
+  local ssh_cmd="ssh -x -o"
   local cmd="$@"
 
   if $verbose ; then
