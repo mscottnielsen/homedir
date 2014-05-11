@@ -1,19 +1,19 @@
 homedir
 =======
 
-A generic home directory (for bash), including dot-files, scripts, etc, portable across OS's, suitable for mutliple users. Typical use-cases are:
-* a $HOMEDIR that is completely under version control, but does not need a separate file for every single user.
-* separate out per-host configuration from per-user configuration.
-* easily install, customize & configure temp virtual environments (VM's, containers), so they can have all the same functionality as your already-comforatable & customized $HOME.
-* training environments, e.g., with a dozen or so "student" accounts that need to be basically the same but allow customization
-* demo VM's that need a generic but fully functional $HOME, with all the functionality of your $HOME, but without the need to stop out your sensitive/personal info.
+A generic home directory (for bash), including dot-files & scripts, portable across OS's, suitable for mutliple hosts & users. Features / use-cases:
+* a home directory that is completely under version control, without the need for a separate "project" for every single user and/or host, OS.
+* separate out per-host configuration and per-user configuration. While these can be under version control, too, they can be in a separate project, since each user and each host is a separate file.  Groups of users can also share common configuration via "org" env files (eg, dev org, sysops org, xyz org,...)
+* can use for training environments, e.g., with a dozen or so "student" accounts that need to be basically the same, but also allow per-student customization.
+* makes it easy to set up and configure temporary virtual environments (VM's/containers for demo's, POC's), so they all can have the same functionality as your existing $HOME.
+* reuse your existing $HOME configuration, but without the need to manually remove your sensitive/personal info (or just to keep private various hacks that aren't ready to be shared). Personal info (env vars, files, private aliases/functions) can be in an unversioned, local file.
 
 To achieve these goals, all $HOME configuration is refactored into separate files for:
-* generic configuration that applies to every user, every host, every OS (most things go here)
-* per-OS configuration (a lot of things go here: e.g., for Linux, SunOS, HP-UX, AIX, Cygwin, MacOSX, etc)
-* per-application configuration (these are small per-application configuration settings; e.g, a few env vars, functions)
-* per-host configuration (a few env vars set here, e.g,. to properly set the PATH)
-* per-user configuration (hardly anything goes here)
+* generic configuration that applies to every user, every host, every OS (common files; most configuration goes here)
+* per-OS configuration (a lot of things go here: e.g., one file each for Linux, SunOS, HP-UX, AIX, Cygwin, MacOSX, etc)
+* per-application configuration (these are very small per-application configuration settings; a few env vars, functions)
+* per-host configuration (only few env vars set here, for example properly setting the PATH for a given host)
+* per-user configuration (ideally, hardly anything goes here, but it may be useful for "generic" user accounts)
 * unversioned, local, current user-configuration (optional: maybe env vars storing passwords, usernames, etc)
 
 To install & use this $HOME dir configration, get the 'git' project (either via 'git clone', or download the zip); and place it anywhere in your home directory. Symbolic links will then be created during the "install" script, pointing from your $HOME into this project:
