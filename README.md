@@ -24,7 +24,7 @@ To install & use this $HOME dir configration, get the 'git' project (either via 
     ...
     $ cd homedir
 
-    ## this creates symlinks from ~/.bashrc, ~/.profile, etc to 
+    ## this creates symlinks from ~/.bashrc, ~/.profile, etc to
     ## existing files will be moved out of the way (renamed)
     ./setup-links.sh
 
