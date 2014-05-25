@@ -312,7 +312,12 @@ ext2dir () {
         opts="x"
         ls_opts="l"
         ;;
-      tar.Z)                  # compressed tar (use gzip instead of uncompress/zcat/etc)
+      txz)                    # xz compressed tar (use  "-J" (-xv), or let tar figure it out)
+        exploder=$mytar
+        opts="xf"
+        ls_opts="tf"
+        ;;
+      tar.Z)                  # compressed tar
         exploder=$mytar
         opts="xzf"
         ls_opts="tzf"
