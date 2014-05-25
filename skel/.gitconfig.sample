@@ -121,3 +121,5 @@
 	# prevent eol conversions (must set on windows/mac), always use what is checked-in)
 	#autocrlf = false
 
+[credential]
+	helper = cache --timeout=3600
