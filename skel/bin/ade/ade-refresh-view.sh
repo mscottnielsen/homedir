@@ -90,7 +90,7 @@ do_ade_refresh() {
   view=$1; shift
   opt="$@"
 
-  printf "## refresh view=\"$view\"; options ($#): ${opt}\n"
+  printf "\n## refresh view=\"$view\"; options ($#): ${opt}\n"
   ade lsviews | egrep "^${view} " | egrep "NONE$" 2>/dev/null || {
     printf "## view in transaction, not updating: ${view}\n"
     return 0
