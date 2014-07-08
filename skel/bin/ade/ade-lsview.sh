@@ -1,26 +1,29 @@
 #!/bin/bash
 #
-# List ADE views that:
-#   (1) match a pattern (either simple glob, or full regexp),
-#   (2) have open transactions,
-#   (3) are out-of-date and require refreshing.
+# Usage: lsview.sh [-l -t -r -u -c -h] [pattern]
+#    -l   long listing (long listing also used for pattern match)
+#    -t   list open transactions
+#    -r   refresh matching views
+#    -u   use the matching view (one only); can be used together with -r/-t
+#    -c   create new view w/ same specs; additional args used for new view name
+#    -h   print usage (See this help usage for all options)
 #
-#  The (multiple) matching view(s) may be:
-#   (1) simply be listed (optionally "long" listing),
-#   (2) entered into (i.e., "ade useview") (only if one match)
+# List ADE views that:
+#   (1) match a pattern (either simple glob, or full regexp);
+#   (2) OR, have open transactions;
+#   (3) OR, are out-of-date and require 'ade refresh'
+#
+#  The matching view(s) may be:
+#   (1) listed (optionally "long" listing),
+#   (2) "used" (entered into, using "ade useview") (only if ONE match)
 #   (3) destroyed,
 #   (4) refreshed,
-#   (5) used to create a new view (the same series, a new name)
-#
-# Usage: lsview.sh [-l -t -r -u -h] [pattern]
-# (See help usage for all options)
+#   (5) used to create a duplicate view (uses a new name, w/ same label/series)
 #
 # Notes:
 #  * The pattern may be a wildcard ("foo*bar") or a regex ("foo.*ba[rt]").
-#  * Multiple matching views can be refreshed or deleted or listed.
-#  * To "use" a view, only one view can match.
-#  * To create a new view with similar options as the matching view, the additional
-#    arguments are used to name the new view. This script calls additional external
+#  * To create a new view with similar options as the matching view, additional
+#    arguments are used to name the new view. NOTE: this script calls external
 #    scripts for some of this functionality.
 #
 # Examples:
@@ -261,13 +264,13 @@ lsview() {
   usage() { cat <<USAGE_EOF
     Usage: lsview [grep_opt] [-h -d -l ] [pattern]
 
-    List ADE views by pattern, either regex or wildcard. Patterns matched against
-    ADE long listing.  Alternatively, lists views with open transactions (-t) or
-    views that are out-of-date (-o).  These options can be combined with options
-    to refresh/destroy/use the matching view(s).  Recommended view naming is:
-        {username}_{series}[_host][_date][_desc]_{tip|latest|label}
+    List ADE views by pattern, using either a regex or wildcard. List views with
+    open transactions (-t) or views that are out-of-date (-o). Long listing (-l)
+    are also used for pattern matching. In addition to listing views, matching
+    views may be refreshed/destroyed/used. Recommended view naming is (some scripts
+    expect this format): {username}_{series}[_host][_date][_desc]_{tip|latest|label}
 
-     Examples:
+    Examples:
      $ lsview 'oggcore*20140602'
          mnielsen_oggcore_main_adc987654_20140602_perftest_latest
          mnielsen_oggcore_11_2_1_slc123456_20140602_bug_123456_tip
