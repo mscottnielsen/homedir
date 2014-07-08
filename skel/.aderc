@@ -1,8 +1,5 @@
-
 SHELL=/bin/bash
 
-#typeset -fx __gitdir
-#type __gitdir && { echo 'ok: _gitdir defined'; }  || { echo 'define gitdir'; __gitdir() { :; } ; }
-
-
+echo 'cd $ADE_VIEW_ROOT'
+cd $ADE_VIEW_ROOT
 
