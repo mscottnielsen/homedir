@@ -49,15 +49,6 @@ alias eg='egrep --color=always'     # use color with more/less, too
 # find makefiles
 alias findm='find . -name "Make*[ke]" -print'
 
-# cd into the most-recent directory used in pwd
-cdr() {
-  local latest_dir="."
-  latest_dir=$(ls -1trF | grep '/$' | tail -1) \
-      && [ ${#latest_dir} -gt 1 ] \
-      && cd "$latest_dir" \
-      && return 0 \
-      || return 1
-}
 
 ############################################################################
 # print or update homedir release version
@@ -232,6 +223,23 @@ del() {
 mkd () {
   [ $# -ne 1 ] && printf "usage: mkd {name} \n    make directory {name} and cd into it.\n\n" && return 2
   mkdir "$1" && cd "$1"
+}
+
+############################################################################
+# cd into the most recently modified directory
+cdr() {
+  local latest="." match="."
+  [ "${1:0:1}" = "-" ] \
+    && printf 'Usage: cdr {pattern}\n chdir into the last-modified directory matching the given pattern.\n' \
+    && return 1
+
+  [ $# -gt 0 ] && match="${1}.*"
+  latest=$(ls -1trF | egrep "${match}/$" | tail -1) \
+      && [ ${#latest} -gt 1 ] \
+      && cd "$latest" \
+      && return 0 \
+      || return 1
+  set +x
 }
 
 ############################################################################
@@ -583,6 +591,20 @@ EOF
   sed "s,^Only in \([^:]*\) *: *\(.*\)$,${only_in_cmd} \1\/\2;\n,"
 }
 
+############################################################################
+# squeeze multiple blank lines into one
+############################################################################
+squeeze() {
+  local pat='^$'
+  if [ $# -ge 2 -a "$1" = "-p" ]; then
+    pat="$2"
+    shift 2
+    #awk -vpat="$pat" 't || $0 ~ pat; { t = ! pat }' "$@"
+    #awk "t || !/$pat/; { t = !/$pat/ }" "$@"
+    #awk 't || !/^$/; { t = !/^$/ }'
+  fi
+  awk "t || !/$pat/; { t = !/$pat/ }" "$@"
+}
 
 ############################################################################
 # convert to upper/lowercase, copy to x buffer
