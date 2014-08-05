@@ -105,6 +105,15 @@
 	# showing what would be pushed (currently committed); see also alias difr
 	outgoing = log @{u}..
 
+	# print current branch  (or: rev-parse --abbrev-ref HEAD)
+	what-branch = "!f() { git symbolic-ref -q --short HEAD || git rev-parse --abbrev-ref HEAD; }; f"
+
+	# print current tag
+	what-tag = describe --tags --exact-match
+
+	# print all tags (matching the optional pattern), with full annotations
+	ls-tags  = "!f() { [ $# -gt 0 ] && arg=$@ || arg=. ; for t in `git tag -l | grep $arg`; do printf \"\n============ $t\n\"; git cat-file -p `git rev-parse $t` | egrep -v '^type commit$'; done; }; f"
+
 [branch]
 	# set up new branches to pull from that corresp. remote branch
 	# (the default is true, but you don't want it to be anything else)
