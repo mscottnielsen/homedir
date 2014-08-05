@@ -172,7 +172,7 @@ do
     | egrep '^ *Title=' \
     | sed 's/^ *Title=//; s/  */_/g; s/[#0-9*&;:]//g' \
     | sed 's/[-_]*Microsoft.Word[-_]*//g' \
-    | sed 's/_[-_.]*_/-/g' | tr -d '["]'  | tr -d "[']"  | tr '[/.]' '-' | sed 's/--*/-/g; s/-_/-/g; s/_-/-/g; s/doc-doc/doc/g' )
+    | sed 's/_[-_.]*_/-/g; s/[\\/()]/-/g' | tr -d '["]'  | tr -d "[']"  | tr '[/.]' '-' | sed 's/--*/-/g; s/-_/-/g; s/_-/-/g; s/-*$//; s/doc-doc/doc/g' )
 
 
   # try to get rid of all goofy characters to create a reasonable filename for the symlink
