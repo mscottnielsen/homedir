@@ -1,38 +1,41 @@
 #!/bin/bash
 #
 # Usage: ade-lsview.sh [options] [pattern]
-# List ADE views that either:
-#   (1) match a pattern, either a regexp (foo.*[0-9]) or simple glob (foo*99));
-#   (2) OR, have open transactions;
-#   (3) OR, are out-of-date and require 'ade refresh'
 #
-#  The matching view(s) may be:
-#   (1) simply listed (optionally, using the "long" listing),
-#   (2) "used" (entered into, using "ade useview")
-#   (3) destroyed,
-#   (4) refreshed,
-#   (5) used to create a duplicate view (new name, same label/series)
+# Lists ADE views matching a pattern, optionally using and/or refreshing the view.
+#
+# Matching view(s) may be:
+#   * listed ("ade lsview", optionally "long" listing);
+#   * used ("ade useview");
+#   * destroyed;
+#   * refreshed;
+#   * used to create a duplicate view (new name, same label/series).
+#
+# Views may be selected by:
+#   * matching a regexp (foo.*[0-9]) or simple glob (foo*99);
+#   * and/or views with with open transactions;
+#   * and/or out-of-date views, needing a 'refresh'
 #
 # Options (run with '-h' to see all options):
-#   -h   print usage
-#   -l   long listing (if selected, used for pattern match)
-#   -o   list out of date views
-#   -t   list views with open transactions
+#   -h   print full usage
+#   -l   view long listing (also used in pattern match)
+#   -o   include only out-of-date views
+#   -t   include only views with open transactions
 #   -r   refresh matching views
-#   -u   use the (single) matching view; may be used with options: -r, -t, -o, -l
-#   -c   create new view w/ same specs; additional args used for new view name.
+#   -u   use the matched view; may be used with: { -r, -t, -o, -l }
+#   -c   create a new view with the same specs. Any trailing args will
+#        be used as part of the new view name (optional).
 #
-# Examples:
-#   Listing views, using views, refreshing views:
+# Examples listing, using, refreshing views:
 #   $ lsview core*11.2            # list views matching regex: ".*core.*11.2.*"
 #   $ lsview -l adp*11.2*bug123   # long listing for matching views (shows txns)
 #   $ lsview -r 'oggcore*'        # refresh all matching views
-#
 #   $ lsview -u 'core*11.2*test'  # use matching view (only if there is 1 match)
 #   $ lsview -u -r core*11.2*test # refresh (-r) matching view, then use it (-u)
 #   $ lsview -t -u                # list view with open txn; if one match, use it
-#
-# Note: This script calls external scripts for some of this functionality.
+#   $ lsview -c adp*12.1*dev tst2 # create new view from series/label/settings of the view
+#                                 # matching adp*12.1*dev; include "tst2" in the new view name
+# Note: external script used for refreshing the view (ade-refresh-view.sh)
 ##############################################################################
 
 _ade_lsview_usage() {
@@ -119,6 +122,7 @@ _ade_lsview_get_view_name() {
   local format_output=trunc
   [ $# -gt 0 -a "$1" = "-l" ] && format_output=cat && shift
   [ $# -gt 0 -a "$1" = "-n" ] && format_output=word_count && shift
+  [ "${1:0:1}" = "-" ] && { echo "## error: usage: _ade_lsview_get_view_name [-l][-n] {view1[,view2...]}" >/dev/null; return 2; }
 
   # truncate output after "|"
   trunc() { cut -d\| -f1 | sed 's/  *//g' ; return 0; }
@@ -153,7 +157,7 @@ _ade_lsview_grep() {
 
   while getopts hlost opt ; do
     case "$opt" in
-      h) printf "** usage: [-l -o -s -t -h] pattern [grep-opts]\n" 1>&2
+      h) printf " usage: [-l -o -s -t -h] pattern [grep-opts]\n" 1>&2
          ;;
       l) long_opt="-l"
          ;;
@@ -165,8 +169,8 @@ _ade_lsview_grep() {
          ;;
       t) only_tx=true
          ;;
-      *) printf "** Usage: [-c -d -h -l -o -r -s -t -u] pattern [grep-opts]\n" 1>&2
-         printf "** Error: unknown option ($args). Use '-h' (help) option for more information.\n" 1>&2
+      *) printf "## error: unknown option ($args). Run with '-h' (help) for full usage.\n" 1>&2
+         printf "** Usage: [-c -d -h -l -o -r -s -t -u] pattern [grep-opts]\n" 1>&2
          return 2
          ;;
     esac
@@ -300,7 +304,7 @@ lsview() {
   local ls_opt="" arg="" opt="" res=0 ask=true tmp=""
   local grep_opts="" pattern="" extra="" views="" new_view_name="" view_name="" view_count=0
   local list_msg="" do_list=true do_useview=false do_refresh=false do_destroy=false do_create=false
-  local script_found=true refresh_script=$ADE_REFRESH_SCRIPT
+  local script_found=true refresh_script_opts=""
 
   split() { # convert "-abc -def" into "-a -b -c -d -e -f"
     local x opt
@@ -341,6 +345,8 @@ lsview() {
             do_list=false
             ;;
         -y) ask=false
+            printf "## warning: not asking, and forcing refresh\n" 1>&2
+            refresh_script_opts="-f"
             ;;
          *) # one pattern, and the rest passed to useview/refreshview
             [ ${#pattern} -eq 0 ] && pattern="$opt" || extra="$extra $opt"
@@ -357,20 +363,20 @@ lsview() {
   view_count=$(_ade_lsview_get_view_name -n "$views")
 
   [ $view_count -eq 0 ] \
-    && printf "# no views matching pattern: pattern=\"${pattern:-"*"}\"${list_msg}\n" 1>&2 \
-    || printf "# pattern=\"${pattern:-"*"}\",${list_msg} matching views=$view_count\n" 1>&2
+    && printf "# no views matching pattern \"${pattern:-"*"}\",${list_msg}\n" 1>&2 \
+    || printf "# pattern=\"${pattern:-"*"}\",${list_msg} ($view_count matches)\n" 1>&2
 
-  [ ! -f "$refresh_script" ] && script_found=false \
-    && { printf "\n** Warning: script not found: ${refresh_script}\n" 1>&2; }
+  [ ! -f "$ADE_REFRESH_SCRIPT" ] && script_found=false \
+    && { printf "\n## warning: script not found: ${ADE_REFRESH_SCRIPT}\n" 1>&2; }
 
   $do_refresh && ! $script_found \
-    && { printf "** Error: can't refresh views; refresh script not found: ${refresh_script}\n" 1>&2; return 2; }
+    && { printf "## error: can't refresh view, script not found: ${ADE_REFRESH_SCRIPT}\n" 1>&2; return 2; }
 
   $do_create && [ $view_count -gt 1 ] \
-    && { printf "** Warning: more than one view matches pattern, can't create duplicate view\n" 1>&2; return 2; }
+    && { printf "## warning: more than one view matches pattern, can't create duplicate view\n" 1>&2; return 2; }
 
   $do_useview && [ $view_count -gt 1 ] \
-    && { printf "** Warning: more than one view matches pattern, can't run \'ade useview\'\n" 1>&2; return 2; }
+    && { printf "## warning: more than one view matches pattern, can't run \'ade useview\'\n" 1>&2; return 2; }
 
   # list view(s)
   if $do_list ; then
@@ -381,7 +387,7 @@ lsview() {
   # create new view, similar to matching view (only if one match)
   if $do_create ; then
     if [ $view_count -gt 1 ] ; then
-      printf "** Warning: more than one view matches, not creating a new view\n" 1>&2
+      printf "## warning: multiple views match pattern, unable to duplicate view\n" 1>&2
       res=3
     elif [ $view_count -eq 1 ] ; then
       view_name=$(_ade_lsview_get_view_name "$views")
@@ -389,17 +395,17 @@ lsview() {
       _ade_lsview_create_similar_view "$view_name" "$extra" || { new_view_name=""; return 2; }
       res=$?
     else
-      printf "** no matching view found\n" 1>&2
+      printf "## no matching view found\n" 1>&2
       res=1
     fi
   fi
 
   # do refresh view(s) (multiple matches allowed)
-  if $do_refresh && $script_found ; then
+  if $do_refresh && $script_found && [ $view_count -gt 0 ] ; then
     [ "$new_view_name" != "" ] && tmp=$new_view_name || tmp=$views
     for v in $(_ade_lsview_get_view_name $tmp);  do
-      $DO_RUN $refresh_script "$v" $extra 1>&2 \
-         || { printf "\n** Error: can't refresh=\"$v\" options=\"$extra\" script=$refresh_script\n" 1>&2 ; return 2; }
+      $DO_RUN $ADE_REFRESH_SCRIPT $refresh_script_opts "$v" $extra 1>&2 \
+         || { printf "\n## error: can't refresh \"$v\" \"$extra\" ($ADE_REFRESH_SCRIPT $refresh_script_opts)\n" 1>&2 ; return 2; }
     done
   fi
 
@@ -407,7 +413,7 @@ lsview() {
   # destroy view(s) (multiple matches allowed)
   if $do_destroy ; then
     if [ $view_count -gt 1 ] ; then
-      printf "** Warning: more than one view matches pattern ($view_count views)\n" 1>&2
+      printf "## warning: multiple views match pattern ($view_count views)\n" 1>&2
       if $ask ; then
         _ade_lsview_ask "** continue to destroy all matching views? " || return 2
       fi
@@ -415,23 +421,23 @@ lsview() {
 
     for v in $(_ade_lsview_get_view_name $views);  do
       if $ask ; then
-        _ade_lsview_ask "** Warning: destroy view: $v" || return 2
+        _ade_lsview_ask "** Warning: destroy view: \"$v\"" || return 2
       fi
       echo "ade destroyview -rm_twork -force $v"
       $ADE_PROG destroyview -rm_twork -force $v \
-         || { printf "\n** Error: can't destroy view: \"$v\"\n" 1>&2 ; return 2; }
+         || { printf "\n## error: unable to destroy view \"$v\"\n" 1>&2 ; return 2; }
     done
   fi
 
   # use view (only if one match)
   if $do_useview ; then
     if [ $view_count -gt 1 ] ; then
-      printf "** Warning: more than one view matches pattern, not entering view\n" 1>&2
+      printf "## warning: multiple views match pattern, not using view\n" 1>&2
       res=3
     elif [ $view_count -eq 1 ] ; then
      view_name=$(_ade_lsview_get_view_name "$views")
      [ "$new_view_name" != "" ] && view_name=$new_view_name
-      printf "** Entering view: $view_name $extra\n" 1>&2
+      printf "## entering view \"$view_name\" $extra\n" 1>&2
       $ADE_PROG useview "$view_name" $extra  #1>&2
       res=$?
     else
