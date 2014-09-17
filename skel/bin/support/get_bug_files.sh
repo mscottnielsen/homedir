@@ -49,9 +49,9 @@ setup() {
   local bugdir=$1
 
   [ -d "$bugdir" -a "$use_existing_dir" = "false" ] && die "directory already exists: $bugdir"
-  type lftp >/dev/null 2>&1  || die "lftp not found (required to download bug artifacts)"
   mkdir -p "$bugdir" || die "can't create dir: $bugdir"
   cd "$bugdir"       || die "can't chdir to $bugdir"
+  type lftp >/dev/null 2>&1  || die "lftp not found (required to download bug artifacts)"
 
   return 0
 }
@@ -169,14 +169,15 @@ outdir="bug-${bugno}"
 [ $# -gt 0 ] && desc=$(echo "$*" | to_lower | sed s'/ /_/g; s/[-_][-_]*/_/g; s/^[-_]//' )
 [ "$desc" != "" ] && outdir="${outdir}-${desc}"
 
-setup $outdir
-
 printf "
- Downloading:
+ Prepare:
    bug=$bugno
    file(s)=\"$filen\"
    desc=\"$desc\"
    dir=$outdir\n\n"
+
+setup $outdir
+printf " Downloading...."
 
 read -n1 -p '==================== Ready? [y|n] (n)' yn && echo
 [ "$yn" != "y" ] && echo '...ok, exiting...' && exit 1
