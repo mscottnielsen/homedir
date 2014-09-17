@@ -1,0 +1,1149 @@
+##########################################################################
+## Bash completion for ADE commands/options/views/transactions/series/etc.
+## Example:
+##   $ ade ls[tab][tab]          => show matching: lsco lshistory lspri...
+##   $ ade lsvi[tab]             => show single match: "lsviews"
+##   $ ade useview [tab][tab]    => list all views for user
+##   $ ade useview my_view[tab]  => list matching views "my_view*"
+##
+## To enable ade bash completion (assuming bash-completion is installed):
+##   $ . bash_completion_ade
+##
+## Many ade commands take several seconds to run (or even minutes);
+## therefore, commonly used, static output is cached in temp files.
+##
+## Features:
+##  * view names and transactions complete with or without user name prefix.
+##  * some options auto-complete; eg, "-user" completes as current user
+##  * cleanview/destroyview/useview/etc shows existing views for user.
+##  * new view names are auto-generated for createview if the options are
+##     given first:  -latest, -tip_default, -series, -c {comment},..
+##  * labels, series, product/schema are generated, then cached to speed
+##     up future completions.
+##
+## Scripts: 'hashtab.sh' for persistent hashtables; 'log.sh' for logging.
+## See also: lsview (lsview.sh) used for listing, using, refreshing views.
+##
+# author: mike.nielsen@oracle.com
+# version: 1.6
+# tested: GNU bash, version 3.2.25(1)-release (linux x86_64)
+##########################################################################
+
+if [ ${HOMEDIR_BIN_COMMON_LOG_INIT:-0} -eq 0 ]; then     # logging, fallback
+  . $HOMEDIR_BIN/common/log.sh || log() { :; }           # to no-op log
+fi
+
+if [ ${HOMEDIR_BIN_COMMON_HASHTAB_INIT:-0} -eq 0 ]; then # slow ade cmds results
+  . $HOMEDIR_BIN/common/hashtab.sh                       # cached to tmp files
+fi
+
+#: ${LOG_LEVEL:="INFO"} # global LOG_LEVEL={NONE, ERROR, WARN, INFO, DEBUG, TRACE}
+_ade_log() {
+  #export LOG_LEVEL=DEBUG
+  : ${BASH_COMPLETION_ADE_LOG_LEVEL:=${LOG_LEVEL:=INFO}}
+  export LOG_LEVEL=${BASH_COMPLETION_ADE_LOG_LEVEL}
+  log -F ade_bash_comp "$@"
+  return 0
+}
+
+# case conversion: if sed is broken (solaris), use tr instead.
+if [ "${GNU_SED}" = "" ]; then
+  [ "${DISABLE_GNU_SED}" != "1" ] \
+    && [ "one_two" = "$(printf 'ONE-two' | sed -e 's/\(.*\)/\L\1/; s/-/_/g')" ] \
+    && [ "ONE_TWO" = "$(printf 'ONE-two' | sed -e 's/\(.*\)/\U\1/; s/-/_/g')" ] \
+    && _ade_log DEBUG "using GNU sed for case-conversion" \
+    && GNU_SED=1 \
+    || { GNU_SED=0; _ade_log WARN "GNU sed is not found, using sed+tr instead."; }
+  export GNU_SED
+fi
+
+_ade_log DEBUG "Initialize bash completion scripts for ADE: ${BASH_SOURCE[0]}"
+
+##########################################################################
+# Same as normal 'tee', but always return true
+_ade_tee() {
+  tee $@; return 0
+}
+
+##########################################################################
+# 'quiet' grep (solaris missing "grep -q")
+_ade_grepq() {
+  egrep "$@" > /dev/null 2>&1  # options passed thru, so don't add "--"
+}
+
+##########################################################################
+# remove leading and trailing spaces from string
+_ade_trim() {
+  sed 's/^  *//; s/  *$//'
+}
+
+##########################################################################
+# Grep for words within a line, print words matching the pattern. If no args,
+# do sort+uniq on stdin. Options:
+#   -s  sort returned matching words (removes duplicates)
+# Return: 0 if pattern match, else 1 (same as grep)
+_ade_grepword() {
+  local ret=1 pattern="." do_fmt='cat' do_input='cat'
+  [ $# -gt 0 -a "$1" = "-s" ] && { do_fmt='sort -u'; shift; }
+  [ $# -gt 0 ] && { pattern="$1"; shift; }
+  [ $# -gt 0 ] && do_input="gen_input $*"
+
+  gen_input() { echo "$*"; return 0; }
+
+  _ade_log DEBUG "word-grep: pattern=\"$pattern\", args($#)=${do_input:0:25}..."
+
+  # convert spaces to newlines, grep, convert back to single line
+  $do_input | _ade_newline --add | egrep -- "$pattern" | $do_fmt | _ade_newline --sp | _ade_trim
+  ret=${PIPESTATUS[2]}
+  return $ret
+}
+
+##########################################################################
+# given an array, eg: foo=(cmd -opt1 abc -opt2 def -opt3 ghi...)
+# and an option "-opt1", return the arg for that option ("abc")
+_ade_getopt() {
+  [ $# -lt 2 ] && return 2
+  local ret=0 result="" opt="$1"
+  shift
+  local str=$(echo "" $*)
+
+  # search for opt="-one" in string "foo -one arg1 -two arg2..."
+  # use sed to return the string "arg1"
+  _ade_grepword "$opt" "$str" >/dev/null \
+     && result=$(echo "$str" | sed "s/^.*${opt}[ ][ ]*\([^ ][^ ]*\).*/\1/" | _ade_trim)
+
+  [ "${result// /}" = "${str// /}" ] && result=""
+  [ "${result}" = "" ] && ret=1
+  echo "$result"
+  return $ret
+}
+
+##########################################################################
+# sort words within a string
+_ade_sortwords() {
+  _ade_log DEBUG "sorting... $*"
+  _ade_grepword -s "$@"
+}
+
+##########################################################################
+# convert spaces to newlines (or vice versa)
+_ade_newline() {
+  [ $# -eq 0 ]       && { tr ' '  '\12' ; return 0; } # add newlines: convert spaces to newlines
+  [ "$1" = "--add" ] && { tr ' '  '\12' ; return 0; } # "
+  [ "$1" = "--sp"  ] && { tr '\12' ' '  ; return 0; } # remove newlines: convert to spaces
+  [ "$1" = "--del" ] && { tr -d '\12'   ; return 0; } # delete newlines
+  return 0
+}
+
+##########################################################################
+# convert string to lowercase, and change "-" and "." to "_"
+_ade_to_lower() {
+  if [ $# -eq 0 ]; then
+    [ $GNU_SED -eq 1 ] && sed -e 's/\(.*\)/\L\1/; s/-/_/g' || tr '[A-Z]' '[a-z]' | sed 's/[-.]/_/g'
+  else
+    local ret=$(printf "$@" | sed -e 's/\(.*\)/\L\1/; s/-/_/g')
+    [ "$ret" = "" -o "$ret" = "L$ret" ] && ret=$(printf "$@" | tr '[A-Z]' '[a-z]' | sed 's/[-.]/_/g')
+    _ade_log DEBUG "convert: arg=$@, to=$ret"
+    echo "$ret"
+  fi
+  return 0
+}
+
+##########################################################################
+# to_upper {string} - convert to upper and change "-" to "_"
+_ade_to_upper() {
+  if [ $# -eq 0 ]; then
+    [ $GNU_SED -eq 1 ] && sed -e 's/\(.*\)/\U\1/; s/-/_/g' || tr '[a-z]' '[A-Z]' | sed 's/-/_/g'
+  else
+    local ret=$(printf "$@" | sed -e 's/\(.*\)/\U\1/; s/-/_/g')
+    [ "$ret" = "" -o "$ret" = "U$ret" ] && ret=$(printf "$@" | tr '[a-z]' '[A-Z]' | sed 's/-/_/g')
+    _ade_log DEBUG "convert: arg=$@, to=$ret"
+    echo "$ret"
+  fi
+  return 0
+}
+
+##########################################################################
+# normalize a string, removing duplicate 'special' chars
+_ade_norm() {
+  sed  "s/  */_/g; s/--*/_/g; s/__*/_/g; s/^_//; s/_*$//"
+}
+
+##########################################################################
+# try to get a description for a ade transaction given a view name (incomplete)
+_ade_get_txn_desc() {
+  local view_name=$1 bug=$2
+  [ "$bug" = "" ] && bug=$(echo _"${view_name}" | tr '[-_]' '\12' | grep 'bug_*[0-9]' | sed 's/bug_*//g' | tail -1)
+  local name=$(echo _"${view_name}" | sed "s/$(whoami)//; s/adp_main//; s/_tip$//; s/_latest$//; s/bugfix//; s/bug_*//g; s/$bug//g" | norm)
+  echo "$desc  $name bug${bug}" | norm
+}
+
+##########################################################################
+# list all ADE commands (but not options)
+_ade_list_cmds() {
+  _ade_log DEBUG "generate list of all ADE commands (just once) (args($#) $*)"
+  type ade >/dev/null 2>&1 || return 0
+  ade | grep '^    *|' | cut -f2 -d\| | _ade_newline --del
+}
+
+##########################################################################
+# list cmds, with "|" between
+_ade_list_cmds2()
+{
+  _ade_log DEBUG "begin: args($#) $*"
+  ade | grep '^    *|' | cut -f2 -d\| | _ade_newline --del | sed 's/^ *//; s/ *$//; s/  */|/g'
+}
+
+##########################################################################
+# Timestamps in various formats:
+# timestamp for  the day (year/month/day)
+_ade_mk_tstamp_d() {
+  [ $# -gt 0 -a "$1" = "-s" ] && date '+%Y%m%d' || date '+%Y_%m_%d'
+}
+
+# timestamp, unique hour (year/month/day/hour)
+_ade_mk_tstamp_h() {
+  date '+%Y_%m_%d_%Hh'
+}
+
+# timestamp, unique minute (year/month/day/hour/minute)
+_ade_mk_tstamp_m() {
+  date '+%Y_%m_%d_%Hh%Mm'
+}
+
+##########################################################################
+# ADE commands and options. Unfortunately the 'ade help' does not generate
+# parseable output. (Note: text formatted as "<option>" or "[option]" are
+# ignored in completions.) Put hand-edits above, generated below (alphabetical).
+
+### hand edited (pulled and modified from auto-geneated list below)
+opts_lstrans='-repos -prop -val -user -all -long -sort -compact -error'
+opts_lsco='-short -long -repos -all -view -pwv -user -me'
+opts_lshistory='-short -long -nde_style -nde -sort_by_date -sysbranch <system branch> -all <filename>'
+opts_gethistory=$lshistory_opts
+opts_lsviews='-user -all -repos -long -sort -compact -error -dir -label_status'
+opts_begintrans='-bug <bugNum,bugNum2,...> -lrg <lrgNum> -proj <projID> -diag <bugNum> <txnName> -reopen <closed_txn> -backport <bugNum> -c <comment> -nc'
+opts_diff='-diff_args <args> -gui -classical -xxdiff -tkdiff -repos_diff -user_diff -w -whitespace_ignore -pred -label'
+opts_destroyview='-force -rm_twork'
+opts_cleanview='-defer_rm <timespec> -no_rm -trash -trashonly -tmpfiles -tmpfilesonly -recurse'
+opts_createview='-label <name,series_name@@/LATEST> -populated -nfsdo_root <path> -schema <product_name> -prod <product_name> -no_labelserver -tip_default -no_dos -skip_dos <tld...> -pop_tlds <tld...> -noexpand -series <name> -s <view_storage> -permissions <octal_mode> -latest -fastfs -force -c <comment>'
+opts_showlabels='-series <{PRODUCT}_{VERSION}_{PLATFORM}_or_{label}> -latest -public -latest_by_time -long'
+opts_mkelem='-repos -type <f_d> -c <comment> -nc -binary -recursive -reserved -irid -reconnect'
+
+
+### auto-generated from 'ade help' (if hand-editing options, move to list above)
+opts_abortmerge='-force'
+opts_aborttrans='-force -purge -no_restore_dos -no_restore'
+opts_annotate='-short -line'
+opts_applylabel='-l'
+opts_beginmerge='-c'
+opts_cat='file-version'
+opts_catcs='-long -depprods -view <view_name>'
+opts_chgrp='-newgrp <ade_access_group_name>'
+opts_ci='-repos -schema <schema> -c <comment> -nc -all -identical -ptime -fmode -binary -nosync -noask -no_update_hdr'
+opts_ciall='-repos -schema <schema> -c <comment> -nc -identical -ptime -fmode -binary -nosync -noask -no_update_hdr'
+opts_cmhelp='-help'
+opts_co='-repos -schema <schema> -nc -c -reserved -unreserved -recursive'
+opts_comment='-item <element> <element> -comment -note <file> -help'
+opts_conflict='-unset -set -resolve -f -assign <user> -c'
+opts_copy=''
+# transaction name: <anyuserid>_bug-<digits> | bug-<digits> | <digits> | <anyuserid>_<words> | <words>
+opts_describetrans='<userid>_<tx_name>_bug-<num> -short -long -properties_only -dir_ops <-short> -nouid -nocount  -s <remote_path>  -view <vname> -svrfarm -irids -txn_version -diff_txn_changes'
+opts_destroytrans='-force <txn_name> -rm_properties'
+opts_difflabels='-old_label <old label name> -new_label <new label name>'
+opts_dump='-repos -schema <schema> -shared'
+opts_edcs='-tip_access -config_spec_file <filename>'
+opts_endsharetrans='-view <view_name> -force -take_control'
+opts_endtrans='-label <label_name> -no_restore_dos -no_restore'
+opts_expand='-force -recurse -no_tld_recurse -parallel -degree <degree> -expand_dos <dir> <dir>'
+opts_fetch='-fast <file-version> <destination> -schema <schema> -binary -expand_symlinks'
+opts_fetchtrans='-repos <transname> -nc -c'
+opts_filter='-files <files> -input -execute <filter> -nc -c'
+opts_finalizelabel='-emd_file <emd_file_in_view> -manifest <manifest_file_in_view> -no_manifest'
+opts_freezebranch='-b <branch> -nc -c'
+opts_grabtrans='-full -force -merged -mkbranch -reserved -unreserved -nouid'
+opts_igot='-short -long -repos -all -view <view_name> -pwv -user <userid> -me'
+opts_label='-emd_file <emd_path_and_filename>'
+opts_lsconflict='-resolved -unresolved -all -txn <trans_name> -storage <txn_storage>'
+opts_lsexpand='-long <viewname>'
+opts_lsprod='-l -long <schema>'
+opts_lsproperties='-long -help'
+opts_makebranch='-branch <target_branch_name_or_path> -c -all'
+opts_merge=''
+opts_mergemail='-product <product_name> -from_branch <from_branch_name>'
+opts_mergepeek='-long -short -report'
+opts_mkbranch='-branch <target_branch_name_or_path> -c -all'
+opts_mkdir='-nc -c -p -recursive -reserved -do_not_restore'
+opts_mkhlink='-file filename -from <from_version> -to <to_version> -type <hlink_type>'
+opts_mkproptype='-n <property_name> -t'
+opts_mksysbranch='-branch <branch_name> -nc -c'
+opts_mktype='-nc -c -brtype -sys'
+opts_mv='-repos -schema <schema> <path-from> <path-to>'
+opts_pwd='-short -expand -verbose'
+opts_pwv='-view <view_name> -long'
+opts_refreshview='-label <labelname> -latest <labelseries> -latest_baseline <labelseries> -current -tip'
+opts_remove='-repos -schema <schema> -unbranch -listfile <file_name>'
+opts_renamebranch='-sys -newbranch <new_branch_name> -object <object branch>'
+opts_renamelabel='-l <current_label_name> -to <new_name>'
+opts_renametrans='-s <txn_storage> -bug <bug_num> -lrg <lrgNum> -proj <projID>'
+opts_reverse='-to_label <label> -report -nc -c'
+opts_rm='-repos -schema <schema> -unbranch -listfile <file_name>'
+opts_rmlabel='-l'
+opts_rmname='-repos -schema <schema> -unbranch -listfile <file_name>'
+opts_rollback='-help'
+opts_savetrans='-label <LABEL> -no_update_bug -backport -force_invalid_xml'
+opts_setbranchproperty='-prop <propery_name> -value <property_value> -branch <branch_name> -product <product_name>'
+opts_setcs='-default <merge_method>'
+opts_setlabelcomment='-label <label_name> -comment <comment> -replace'
+opts_setlabelproperty='-prop <propery_name> -value <property_value> -label <label_name> -product <product_name>'
+opts_setproject='-p <project_id> -t <txn_name> -force'
+opts_setproperty='-repos -schema <schema> -prop <property_name> -val <property_value>'
+opts_settransproperty='-prop <propery_name> -value <property_value> -cfile <file_name> -txn <trans_name> -remove'
+opts_setview='<view_name> -bad_servers <label_servers>'
+opts_sharetrans='-s <remote transaction store> -no_restore_dos -no_restore ade sharetrans -reshare -s <remote transaction store> -no_restore_dos -no_restore'
+opts_showdepprods='-inlabel <LABEL> -prod <product_name> -short'
+opts_showseries='-product <prod_name> -platform <platform>'
+opts_symlink='-repos -schema <schema> -nc -c -force -reconnect -irid <irid> <symlink-text> <path-of-symlink>'
+opts_sync='-all -query_all -query <filename> <merge_method>'
+opts_tkreview='-s <txn storage root>'
+opts_unbranch='-toid -all'
+opts_unco='-repos -schema <schema> -wirid <workarea-irid> -all'
+opts_unfreezebranch='-b <branch> -nc -c -prod <schema>,<schema>,<schema>'
+opts_unremove='-reserved'
+opts_unrm='-reserved'
+opts_unrmname='-reserved'
+opts_useview='-bad_servers -exec -noenv -silent -env -s -no_newgrp'
+opts_xbranchmerge='-bug <bugNum> -lrg <lrgNum> -proj <projID> -diag <bugNum> <txnName>'
+
+
+##########################################################################
+# Return true if the given arg is a view (may be prefixed by username)
+_ade_is_view() {
+  local pattern="^${LOGNAME}_${1}$|^${1}$" view="$1"
+  _ade_log INFO "begin args($#) $* => possible_view=\"${view}\" pattern=\"$pattern\""
+
+  [ $# -eq 0 -o "$view" = "" ] && return 1
+  _ade_lsviews "$view" | _ade_newline --add | _ade_grepq -i "${pattern}"
+  return $?
+}
+
+##########################################################################
+# Usage: _ade_preferred_series [-p {1,2,3}] [default_series]
+# Return preferred series/product, using the arg as a suggestion, or
+# picking the most frequently used series from all existing views:
+# Options: -p {n} - to return only the first {n} parts of the series;
+# e.g, given OGGADP_MAIN_PLATFORMS or OGGCORE_11.2.1.0.1_PLATFORMS:
+#    3 => OGGADP_MAIN_PLATFORMS (default)
+#    2 => OGGADP_MAIN
+#    1 => OGGADP
+_ade_preferred_series() {
+  # could init preferred default series (srs) based on rc file (e.g, .ade_bashrc)
+  local srs="" n="1,2,3" res=""
+
+  if [ $# -ge 2 -a "$1" = "-p" ]; then
+     [ "$2" -eq 1 ] && n="1"
+     [ "$2" -eq 2 ] && n="1,2"
+     shift 2
+  fi
+
+  [ $# -gt 0 ] && srs=$(echo "$1" | cut -d_ -f1,2)
+
+  # this gets newest version; doing uniq -c gets most frequently used
+  mod_sort() {
+       sed 's/^[^0-9]/99=&/' | sort -s -t= -k1,2 | sort -s -t . -k1,1rn -k2,2rn -k3,3rn -k4,4rn -k5,5rn | sed 's/^99=//'
+       # ade lsviews  | cut -f2 -d\|  | cut -f2 -d_  | sed 's/^ *//' \
+       #   | sed 's/^[^0-9]/99=&/' | sort -s -t= -k1,2 | sort -s -t . -k1,1rn -k2,2rn -k3,3rn -k4,4rn -k5,5rn | sed 's/^99=//'
+  }
+
+  res=$(ade lsviews | egrep "\|.*${srs}" \
+                    | cut -f2 -d\| \
+                    | sed 's/ *//' \
+                    | cut -d_ -f${n} \
+                    | mod_sort \
+                    | uniq -c \
+                    | sort -s -nr \
+                    | head -1 \
+                    | sed 's/  */ /g; s/^ *//' \
+                    | cut -f2 -d' ' \
+                    | sed 's/ *//g' 2>/dev/null)
+
+  [ "$res" = "" ] && res=$srs
+  echo "$res"
+  return 0
+}
+
+##########################################################################
+# List ade view names, without additional columns. By default, lists short
+# view name w/o username prefix.
+#
+# Usage: _ade_lsviews [ -s | -l ] partial_view_name_to_complete
+# Options:
+#  -s    short view names, w/o prefix by username (default)
+#  -l    long view names, w/ prefix by username
+#
+_ade_lsviews() {
+  _ade_log DEBUG "begin args($#) $*"
+  local len cur
+  local args=$@
+  local user=$LOGNAME
+  local use_shortname="unset"
+
+  [ "$user" = "" ] && user=$(whoami)
+  len=${#user}
+
+  [ $# -gt 0 -a "$1" = "-s" ] && shift && use_shortname="true"
+  [ $# -gt 0 -a "$1" = "-l" ] && shift && use_shortname="false"
+  [ $# -gt 0 ] && cur=$1 \
+    && echo "$user" | _ade_grepq "^${cur:0:$len}" && use_shortname="false"
+
+  _ade_log DEBUG "using short view name [$use_shortname] / user=[$user] / args=[$args]"
+
+  # if use_shortname is true or unset (default), print short name
+  if [ "$use_shortname" = "false" ]; then
+    ade lsviews | grep '|' | cut -d\| -f1
+  else
+    ade lsviews | grep '|' | cut -d\| -f1 | sed "s/^${user}_//"
+  fi
+  return 0
+}
+
+
+##########################################################################
+# filter and print ade output, separate warnings to stderr.
+# return: false (1) if NO warnings; true (0) if warnings are present
+_ade_warnings() {
+  local justWarnings=false quiet=false ret=1
+  local tmpfile=${TEMP_DIR:-/tmp}/tmp.${LOGNAME}.$$.bash_completion_ade.2.out
+  local ignorePattern='ade WARNING: Cannot get list of ADE users|ade WARNING: Looking for transactions for user|ade WARNING: Releasing lock|^ *$'
+  local errorPattern='^ *ade.*WARNING|^ *ade.*ERROR'
+
+  # don't print the error/warnings to stderr (but good output is always output to stdout)
+  [ "$1" = "-q" ] && quiet=true && shift
+
+  # just print the error/warnings to stdout; ignore all good output
+  [ "$1" = "-w" ] && justWarnings=true && shift
+
+  # from stdin, completely filter out some warning/errors
+  if $justWarnings; then
+    egrep -v "$ignorePattern" | egrep "$errorPattern" && ret=0
+  else
+    # write everything to tmpfile; let only "good" output go thru to stdout
+    egrep -v "$ignorePattern" | _ade_tee $tmpfile | egrep -v "$errorPattern"
+
+    # if file contains any errors, print just the errors to stderr (unless quiet=true)
+    if [ -f $tmpfile ] && egrep "$errorPattern" $tmpfile >/dev/null 2>&1; then
+      ret=0    # warnings/errors found
+      $quiet || { printf "\n"; egrep "$errorPattern" $tmpfile; printf "\n"; } 1>&2
+    fi
+    #[ -f $tmpfile ] && rm $tmpfile
+  fi
+  return $ret
+}
+
+##########################################################################
+# Calculate and print the value of a variable. Pass the variable name as the first argument.
+# Usage:
+#    _ade_set_variable {variable_name} [-m|-f|-q] [options] {ade command [ade_options...]}
+#
+# Arguments:
+#    the {variable_name} must come first. E.g., to set the variable "foo" to
+#    the result of header files returned by "lsco":
+#       _ade_set_variable foo -q -m "\.*h$" lsco
+#
+# Options:
+#    -m  {pattern}  case-insensitive pattern match for regexp "pattern"
+#
+#    -f  disable filtering. By default, when the ade command is run, it
+#        is filtered so that leading spaces and special characters are
+#        removed; if a "table" is printed (i.e., with "|") then just the
+#        first column is printed.
+#
+#    -q  quiet - don't print the value, just set the env var.
+#
+# Note: Command errors are stored temporarily in "/tmp" (overriden by ${TEMP_DIR}),
+# in a temporary file called tmp.${LOGNAME}.$$.bash_completion_ade.out
+# The file of errors (if any) are printed to stderr after the command is run.
+#
+_ade_set_variable() {    # instead, use _ade_get()
+  _ade_log DEBUG "begin args($#) $*"
+  [ $# -eq 0 ] && return 0
+
+  # print ade command warnings/errors to stderr for the user (ade prints
+  #  them to stdout, which interferes with completion)
+  local pattern="." do_filter=1 quiet=0
+  local tmpf=${TEMP_DIR:-/tmp}/tmp.${LOGNAME}.$$.bash_completion_ade.0.out
+  local var=$1
+  local value=${!var}
+  local opt OPTIND OPTARG
+  shift
+
+  while getopts fm:q opt ; do
+    case "$opt" in
+      f) do_filter=0 ;;
+      m) pattern="${OPTARG}" ;;
+      q) quiet=1 ;;
+      *) _ade_log ERROR "** error: unknown option given, args: $*" ;;
+    esac
+  done; shift $((OPTIND-1)); OPTIND=1
+
+  _ade_log DEBUG "setting variable=[$var], args=[$*], var=${var}=[${value:0:20}...]"
+  _ade_log DEBUG "quiet mode=$quiet, do_filter=$do_filter, pattern=\"$pattern\""
+
+  echo "$value" | _ade_grepq 'ade.*ERROR' && value="" && _ade_log INFO "${var}: resetting value, attempt to recalcuate (${var}=\"${!var}\")"
+
+  if [ "$value" != "" ]; then
+      _ade_log INFO "using +++ CACHED value (not executing ADE command) => ${var}=\"${value:0:20}...\""
+  else
+      _ade_log INFO "*** NO CACHED value, executing ADE command: $@ (${var}=\"${value:0:15}...\")"
+      if [ $do_filter -eq 1 ]; then
+          value=$(echo $(ade $@ 2>&1 \
+                   | egrep -v 'ade WARNING: Cannot get list of ADE users|ade WARNING: Looking for transactions for user|^ *$' \
+                   | _ade_tee $tmpf \
+                   | egrep -v '^ade.*WARNING|^ade.*ERROR' \
+                   | cut -d\| -f1 \
+                   | _ade_trim \
+                   | egrep -i -- "$pattern"))
+
+          _ade_log DEBUG "done execute \"ade $@\" (filtered, pattern=\"$pattern\") result (${#value}): \"${value:0:20}...\""
+
+          # just print error message, not all output (less verbose); alternatively just cat $tmpf
+          [ -f $tmpf ] && egrep '^ade.*WARNING|^ade.*ERROR' $tmpf >/dev/null 2>&1 \
+              && (printf "\n" && egrep '^ade.*WARNING|^ade.*ERROR' $tmpf && printf "\n") 1>&2
+      else
+          value=$(echo $(ade $@ | _ade_trim | egrep -i -- "$pattern"))
+          _ade_log DEBUG "done execute \"ade $@\" (no filter, pattern=\"$pattern\") result (${#value}): \"${value:0:20}...\""
+      fi
+
+      eval "export ${var}=\"${value}\""
+      _ade_log DEBUG "executed ADE command: setting cached value to result => ${var}=\"${value:0:20}...\""
+      #_ade_log DEBUG "ADE command result: ${var}=\"${!var}\""
+  fi
+
+  [ $quiet -eq 0 ] && [ "${!var}" != "" ] && printf -- "${!var}"
+
+  return 0
+}
+
+##########################################################################
+# Usage:
+#   elapsed {mark} {num_sec} => return true if {num_sec} have elapsed
+#       since {mark} if elapsed, print updated timestamp
+#   elapsed => return true, print timestamp (current seconds since 1970)
+#
+_ade_elapsed() {
+  local ret=2
+  local diff_s=0 now=$(date '+%s' 2>/dev/null)
+  local verbose=false
+  local do_print=true
+
+  [ $# -gt 0 -a "$1" = "-q" ] && do_print=false && shift
+
+  #[ ${#ts} -lt 4 ] && now=$(perl -e 'print time' 2>/dev/null)
+  if [ $# -eq 2 ]; then    # calculate difference, in seconds
+    (( diff_s = now - $1 ))
+    #printf "diff: $diff_s" 1>&2
+    if (( diff_s > $2 )); then
+      $do_print && printf "$now"  # time elapsed, print updated timestamp
+      ret=0          # return true
+    else
+      printf $1      # time not elapsed, print given timestamp
+      ret=1          # return false
+    fi
+  elif [ $# -eq 0 ]; then
+    $do_print && printf $now
+    ret=1
+  else
+    printf "**Error: expecting: {last} {num} (given: $@). Usage: _ade_elapsed [-q] [{timestamp} {seconds}]\n" 1>&2
+  fi
+  return $ret
+}
+
+
+
+##########################################################################
+# Get cached value. Use temp file to store cached values.
+# Usage:
+#   _ade_get [-b|-e|..] {var_name} {ade command [ade_options...]}
+#   _ade_get {opts}     {var_name} {value}
+# Options:
+#   -b     execute command in background, store result in cache
+#   -e     execute command, store result in cache
+#   -d     cache expiry is one day (24 hrs)
+#   -H     cache expiry is one hour
+#   -s {s} cache expiry is {s} seconds
+#   -h     print help/usage msg
+#
+# hashtable API
+#  * hashtab put {store} {key} {value}    # add key=value to given {store}
+#  * hashtab get {store} {key} {default}  # sets default_value if not found
+#
+# Example, get/set background:
+#  $ hashtab put -b ADECOMP series 'ade showseries -product OGGCORE | grep 11.2'
+#  $ hashtab get    ADECOMP series
+#
+# Set a timer to invalidate the value:
+#  $ hashtab put ADECOMP_TS series {timestamp}  # eg., date '+%s'
+#  $ old=$(hashtab get ADECOMP_TS series)       # compare $now to stored $old
+#
+_ade_get() {       # use instead of _ade_set_variable
+  local opt OPTIND OPTARG
+  local put_opt="" expired=false cache_sec=600 error_msg readonly=false
+  local argTrunc=$@; argTrunc="${argTrunc:0:35}..." # debug
+
+  _ade_log DEBUG "_ade_get: begin args($#)=[$argTrunc]"
+
+  while getopts bDdehHs: opt ; do
+    case "$opt" in
+      b) put_opt="-b";;
+      D) hashtab -t dump ADECOMP; return 0;; # debug
+      d) cache_sec="86400";;       # cache expire after 1 day
+      H) cache_sec="3600";;        # cache expire after 1 hour
+      e) put_opt="-e";;
+      h) printf "Usage: _ade_get [-b] {var} {ade command [options...]}\n"; return 2;;
+      s) cache_sec="${OPTARG}";;   # cache expire after given seconds
+      *) _ade_log ERROR "unknown option for _ade_get (args: $argTrunc)";;
+    esac
+  done; shift $((OPTIND-1)); OPTIND=1
+
+  [ ${cache_sec} -ne 0 ] || { _ade_log ERROR "_ade_get: cache expiry expecting seconds (sec=${cache_sec})"; return 2; }
+  [ $# -eq 0 ] && { _ade_log WARN "_ade_get: expecting arguments"; return 2; }
+
+  local ts=$(_ade_elapsed)
+  local key=$1 key_ts="${1}_TS"                              # eg key is "series"; ts is "series_ts"
+  local val_ts=$(hashtab -t get ADECOMP_TS "$key_ts" "$ts")  # if no timestamp, set default to "now"
+  local val=$(hashtab -t get ADECOMP "$key")
+  shift
+  argTrunc=$@; argTrunc="${argTrunc:0:20}..." # debug
+  [ $# -eq 0 ] && readonly=true
+
+  # check if the value contains any ADE errors/warnings
+  if error_msg=$(echo "$val" | _ade_warnings -w); then
+     # if these are stupid errors that should be ignored, modify _ade_warnings to filter them out
+    _ade_log ERROR "_ade_get: cache contains ade warnings/errors, clearing cache; error=[$error_msg] val=[${val:0:100}...] / "
+    hashtab -t rm ADECOMP "$key"
+    val=""
+  fi
+
+  # elapsed {mark} {sec} => return true if {sec} seconds have elapsed since {mark}
+  val_ts=$(_ade_elapsed $val_ts $cache_sec) && expired=true || expired=false
+
+  # NOTE: checks if the cache value length <= 1, not zero (sometimes is issue?)
+  if [ "$expired" = "true" -o ${#val} -le 1 ]; then
+    if $expired ; then
+        _ade_log DEBUG "cached expired; ${key} / update: ${argTrunc}"
+    elif [ ${#val} -le 1 ]; then
+       _ade_log DEBUG "cache empty; ${key} / update: ${argTrunc}"
+       [ "${#error_msg}" -gt 0 ] && echo "$error_msg" 1>&2
+    fi
+    if $readonly; then
+       _ade_log DEBUG "request is readonly; don't update cache: ${key} / update: ${argTrunc}"
+    else
+       hashtab -t $put_opt put ADECOMP "$key" "$@"
+       hashtab -t put ADECOMP_TS "$key_ts" "$val_ts"
+       hashtab -t get ADECOMP "$key"
+    fi
+  else
+    _ade_log DEBUG "using cache (mark=$val_ts|ts=$ts|${cache_sec}s): ${key}=[${val:0:35}...] (ignore: ${argTrunc:0:15}...)"
+  fi
+
+  echo "$val"
+  return 0
+
+  # val=$(echo $( $@ 2>&1 \
+  #          | egrep -v 'ade WARNING: Cannot get list of ADE users|ade WARNING: Looking for transactions for user|^ *$' \
+  #          | _ade_tee $tmpf \
+  #          | egrep -v '^ade.*WARNING|^ade.*ERROR' \
+  #          | cut -d\| -f1 \
+  #          | _ade_trim \
+  #          | egrep -i -- "$pattern"))
+  #
+  # just print error message, not all output (less verbose); alternatively just cat $tmpf
+  # [ -f $tmpf ] && egrep '^ade.*WARNING|^ade.*ERROR' $tmpf >/dev/null 2>&1 \
+  #     && (printf "\n" && egrep '^ade.*WARNING|^ade.*ERROR' $tmpf && printf "\n") 1>&2
+  #
+  #    val=$(echo $($@ | _ade_trim | egrep -i -- "$pattern"))
+  #    _ade_log DEBUG "done execute \"$@\" (no filter, pattern=\"$pattern\") result (${#val}): \"${val:0:20}...\""
+}
+
+_ade_get_exec_bg() { _ade_get -b "$@"; }
+_ade_get_exec_fg() { _ade_get -e "$@"; }
+
+##########################################################################
+# return true if the given arg is a transaction. considers if the
+# txn is prefixed by username, too.
+_ade_is_trans() {
+  local ret=1 pattern="^${LOGNAME}_${1}$|^${1}$"
+  _ade_log DEBUG "begin: args($#) $* => check to see if is a transction: arg=\"${1}\" (created pattern=\"$pattern\")"
+
+  [ $# -eq 0 -o "$1" = "" ] && return 1
+
+  _ade_lstrans "$1" | _ade_grepq -i "$pattern" && ret=0 || ret=1
+  _ade_log DEBUG "is ade transaction? (arg=\"${1}\", filter=\"$pattern\") => $ret (yes=zero)"
+  return $ret
+}
+
+##########################################################################
+# list existing transactions
+_ade_lstrans() {
+  #local var="LIST_ADE_LSTRANS_$(_ade_mk_tstamp_m)"
+  local var="LIST_ADE_LSTRANS"
+  local is_short="unset"
+  local current_user=$LOGNAME
+  local v="" len=0 txn="." result=""
+
+  [ $# -ge 2 -a "$1" = "-v" ] && v=$2 && shift 2
+
+  [ "$current_user" = "" ] && current_user=$(whoami)
+  len=${#current_user}
+  [ $# -gt 0 ] && { txn=$1; echo "$current_user" | _ade_grepq "^${txn:0:$len}" && is_short=false; }
+
+  _ade_log DEBUG "begin: _ade_lstrans args($#) $* => user=$current_user (len=$len), is_short=$is_short"
+  result=$(_ade_get -s 30 -e "LIST_ADE_LSTRANS" "ade lstrans|egrep \"^${current_user}_$txn|^$txn\"")
+
+  $is_short && result=$(printf "$result" | sed "s/^${current_user}_//")
+  [ "$v" = "" ] && printf "${result}\n" || eval "export ${v}=\"${result}\""
+
+  _ade_log DEBUG "end: _ade_lstrans: LIST_ADE_LSTRANS=${result:0:30}..."
+  return 0
+}
+
+##########################################################################
+# Usage: _ade_showseries [product]
+# Return series for a product (schema), eg: OGGADP, OGGCORE (or OGG); cache result.
+_ade_showseries() {
+   local x var=""  key_series="LIST_ADE_SHOWSERIES_" key="LIST_ADE_SHOWSERIES_${1}"
+
+  _ade_log DEBUG "_ade_showseries: args($#) (prod=${1}) $@"
+  [ $# -eq 0 ] && _ade_log WARN "no series name given, no result returned" && return 0
+  var=$(_ade_get_exec_bg "LIST_ADE_SHOWSERIES_${1}" "ade showseries -prod $1")
+  if [ "$var" != "" ]; then
+     echo "$var"
+     return
+  else
+    # if given key 'LIST_ADE_SHOWSERIES_abcde...' is LONGER than keys currently
+    # stored key 'LIST_ADE_SHOWSERIES_abc...' you can safely display the shorter key's value
+    _ade_log DEBUG "_ade_showseries: returned empty / prod=${1}) $@ / print alt series cache"
+    for x in $( hashtab -t keys ADECOMP | grep "$key_series" | grep -v "$key" | sort -r)
+    do
+      if [[ ${key_series} == ${x}* ]]; then  # eg., given key=LIST_ADE_SHOWSERIES_ABC matches LIST_ADE_SHOWSERIES_A
+        var=$(hashtab -t get ADECOMP "$x")        # get values for key LIST_ADE_SHOWSERIES_A
+        _ade_log DEBUG "_ade_showseries: prod=${1}) print alt series: ${var:0:30} "
+        [ "$var" = "" ] && { echo "$var"; return 0; }
+      fi
+    done
+  fi
+
+  return 0
+}
+
+##########################################################################
+# Return products: either entire list, or filtered to match the given pattern.
+# Option: -a => return all subprojects (actually has to list series for a given
+# product, transforming the result)
+_ade_lsprod() { # use _ade_get
+  local use_subprod=false prefix=0
+
+  [ $# -gt 0 -a "$1" = "-a" ] && { use_subprod=true; shift; }
+
+  if [ $# -gt 0 ]; then
+    prefix=$1; shift
+    [ ${#prefix} -lt 3 ] && use_subprod=false   # don't get subprojects for every product
+    prefix=${prefix:0:3}                        # just use first three chars to filter
+  fi
+
+  local pattern=$prefix result=""
+  local list_prod="" list_prod_key="LIST_ADE_PROD"
+  local filt_prod="" filt_prod_key="LIST_ADE_PROD_${prefix}"
+  local subprod=""   subprod_key="LIST_ADE_SUBPROD_${prefix}"
+
+  _ade_log DEBUG "_ade_lsprod: (use_subprod=$use_subprod) prefix=$prefix"
+
+  [ "$prefix" = "0" ] && { pattern="."; _ade_log WARN "no product name given, listing ALL products"; }
+
+  list_prod=$(_ade_get_exec_bg -d "$list_prod_key" "ade lsprod")         # full product list
+  result=$list_prod
+  if [ ${#list_prod} -gt 1 -a ${#prefix} -ge 2 ]; then   # grep thru full list, rather than running ade again
+    _ade_log DEBUG "_ade_lsprod: generate filtered product list: $filt_prod_key / grep $pattern / list=${list_prod:0:50}...}"
+    filt_prod=$(_ade_get_exec_bg -d "$filt_prod_key" "_ade_grepword \"^${pattern}\" \"$list_prod\"")  # filtered list
+    result=$filt_prod
+  else
+    _ade_log DEBUG "_ade_lsprod: NOT generating filtered product list: $filt_prod_key / grep $pattern / list=${list_prod:0:50}...}"
+  fi
+
+  if $use_subprod ; then  # instead of just PROD=OGG, also get OGGADP, OGGMON, OGGCORE, etc
+    if [ ${#prefix} -ge 3 ]; then  # gets all series from matching products; don't run on every product!
+      # it would be fine to get len=${#subprod_key}; ${subprod_key:0:$((len--))}, while len>${#list_prod_key}
+      subprod=$(_ade_get -d "$subprod_key")
+      if [ ${#subprod} -gt 1 ]; then
+          _ade_log DEBUG "found existing cached value for: $subprod_key (prefix=$prefix): [$subprod]"
+          echo $subprod
+      else
+         _ade_log DEBUG "no existing cached value for: $subprod_key (prefix=$prefix)"
+        subprod=$(for p in $filt_prod
+           do
+               _ade_log DEBUG "=== $subprod_key: get product series for product: $p"
+               _ade_showseries $p | _ade_newline --add | grep . | cut -d_ -f1
+           done | _ade_sortwords)
+        # return all subprojects, all subproducts: OGG={OGGADP,OGGCORE,OGGMON...}
+        _ade_get -d "$subprod_key" "$subprod"
+      fi
+    else
+      _ade_log DEBUG "=== $subprod_key: do NOT get long list of product series for prefix=$prefix"
+      echo "$result"
+    fi
+  else
+    echo "$result"  # don't return subprojects
+  fi
+
+  return 0
+}
+
+##########################################################################
+# Usage: _ade_showlabels [series_name]
+# Return labels for the series; by default, use current series.
+# Results cached hourly.
+_ade_showlabels() {
+  local series_opt=""
+  # refresh cached value by periodically using a different variable name;
+  # be sure to use a unique variable name for all series names.
+  # Can't do: var="LIST_ADE_SHOWLABELS" or var="LIST_ADE_SHOWLABELS_$(_ade_mk_tstamp_h)"
+
+  # strip special characters from variable name, e.g: ${foo//[- .]/_}
+  local var="LIST_ADE_SHOWLABELS_${1//[- .]/_}_$(_ade_mk_tstamp_h)"
+
+  [ $# -gt 0 ] && series_opt="-series $1"
+  _ade_log INFO "begin: args($#) $* => old var=$var=${!var} (series=\"$series_opt\")"
+
+  _ade_set_variable $var showlabels $series_opt
+  return 0
+}
+
+_ade_showlabels2() {
+  local series="" var="LIST_ADE_SHOWLABELS_${1//[- .]/_}"
+  [ $# -gt 0 ] && series="-series $1"
+  _ade_log DEBUG "_ade_showlabels2 begin: args($#) $var (series=\"$series\") [$*]"
+  _ade_get_exec_bg -h "$var" "ade showlabels $series"
+  return 0
+}
+
+##########################################################################
+# expects argument: ${cur}
+_ade_filelist() {
+  _ade_log DEBUG "begin: args($#) $*"
+  compgen -o nospace -f -d -- "${1}" 2>/dev/null | egrep -v '\.ade_path|\.label|\.ndeprod|\.manifest|\.fullsource'
+}
+
+# ToDo: document 'intelli-sense' completion options for generating view/txn names, maybe allow
+# customization. E g., ade_bash_complete_view=%u_%d_%b_%c_$t => user_desc_bug_comment{_tip|_latest}
+
+##########################################################################
+# Complete commands and options. For example,
+#   $  ade begintr[tab] => ade begintrans
+#   $  ade begintrans
+# use intelligent completion when possible for view/transaction/series/product options.
+#
+##########################################################################
+_ade()
+{
+  _ade_log DEBUG "begin completion: args($#) $*"
+
+  # the current command: ade {cmd} [prev...] {cur}
+  local cmd=${COMP_WORDS[1]} prev=${COMP_WORDS[COMP_CWORD-1]} cur=${COMP_WORDS[COMP_CWORD]}
+
+  # options for current command, e.g., cmd=lsco, then options are in opts_lsco=...
+  local opts_cmd=opts_${cmd}
+
+  # the resulting options to present to the user. By default, return ${!opts_cmd}
+  local opts x
+
+  # various local temp variables
+  local tmpa tmp_prod tmp_prod2 tmp_series tmp_series2
+
+  # if COMPREPLY is explicitly set, ignore "opts". Otherwise generate COMPREPLY from $opts
+  COMPREPLY=()
+
+  [ -z "$all_commands" ] && all_commands=( $(_ade_list_cmds) )
+
+  _ade_log DEBUG "begin completion (ade commands=${#all_commands[@]}) cmd=$cmd (prev=\"$prev\", cur=\"$cur\", $opts_cmd=\"${!opts_cmd}\")"
+
+  # guess 'product', to complete series or labels (if given {-product|-schema})
+  tmp_prod=$(echo ${COMP_WORDS[*]} | egrep -- '-prod|-schema' | sed 's/^.*-prod[uct]*//; s/^.*-schema//' | cut -f1 | sed 's/  *//')
+  tmp_prod2=$(echo "$cur" | sed 's/_.*//; s/  *//')
+  _ade_log DEBUG "current product?: tmp_prod=$tmp_prod, tmp_prod2=$tmp_prod2"
+  [ "$tmp_prod" = "" ] && tmp_prod=$tmp_prod2
+
+  # guess 'series', to complete labels (if given {-series})
+  tmp_series=$(echo ${COMP_WORDS[*]} | egrep -- '-series' | sed 's/^.*-series//' | cut -f1 | sed 's/  *//')
+  tmp_series2=$(echo "$cur" | sed 's/_.*//; s/  *//')
+  _ade_log DEBUG "guess series: tmp_series=$tmp_series, tmp_series2=$tmp_series2"
+  [ "$tmp_series" = "" ] && tmp_series=$tmp_series2
+
+  # complete the arguments to some of the basic commands.
+  if [[ $COMP_CWORD -eq 1 ]] ; then
+      _ade_log DEBUG "show all commands (${#all_commands[@]}) and return (cur=$cur)"
+      tmpa="${all_commands[@]}"
+      COMPREPLY=($(compgen -W "$tmpa" -- ${cur}))
+  else
+      if [[ "$cur" == -* ]]; then
+          _ade_log DEBUG "complete flags, given: cmd=$cmd, prev=$prev, cur=$cur, opts_cmd=$opts_cmd=${!opts_cmd}"
+          # Complete options using opts_{cmd} (e.g., opts_lsco="-series...").
+          # Can also complete options *regardless* of command
+          case "$cmd" in
+             # lstrans) opts=${!opts_cmd} ;;
+             * ) opts=${!opts_cmd} ;;
+          esac
+          [ -n "$opts" -a -z "$COMPREPLY" ] && COMPREPLY=($(compgen -W "$opts" -- $cur))
+      else
+          _ade_log DEBUG "==========begin case: complete command=\"$cmd\", prev=\"$prev\", cur=\"$cur\", opts_cmd=\"$opts_cmd\"=\"${opts_cmd:0:20}...\""
+          _ade_log DEBUG "all options for command=\"$cmd\" => opts_cmd=$opts_cmd=\"${!opts_cmd}\""
+
+          case "$cmd" in
+             help)
+                  _ade_log DEBUG "case: help"
+                  opts=${all_commands[@]}
+                  ;;
+
+             cleanview | destroyview | setview | useview )
+                  _ade_log DEBUG "case: cleanview | destroyview | setview | useview )"
+                  if _ade_is_view "$prev"; then
+                     _ade_log INFO "match (*view), already have view($prev), don't use another"
+                  else
+                     _ade_log INFO "match command (*view=$cmd), don't have a specific view yet (prev=$prev, cur=$cur), listing views to match"
+                    opts=$(_ade_lsviews $cur)
+                  fi
+                  ;;
+
+             createview )
+                  _ade_log DEBUG "case: createview)"
+                  case "$prev" in
+                    -prod | -product | -schema )
+                        _ade_log DEBUG "case: createview/prev=-prod | -product | -schema)"
+                        _ade_log INFO " (raw) before set opts: LIST_ADE_LSPROD__ALL=${LIST_ADE_LSPROD__ALL:0:20}..."
+                        opts=$(_ade_lsprod -a $cur)
+                        _ade_log INFO " (raw)  after set opts: LIST_ADE_LSPROD__ALL=${LIST_ADE_LSPROD__ALL:0:20}..."
+                        ;;
+                    -series )
+                        _ade_log DEBUG "case: createview/prev=-series)"
+                        opts=$(_ade_showseries ${tmp_prod})
+                        ;;
+                    -label | -l )
+                        _ade_log DEBUG "case: createview/prev=-label|-l)"
+                        opts=$(_ade_showlabels ${tmp_series})
+                        ;;
+                     * )
+                        _ade_log DEBUG "case: createview/prev=*)"
+                        if _ade_is_view "$prev"; then
+                          _ade_log INFO "createview: already have view (arg=$prev), don't list other views"
+                          opts=""
+                          COMPREPLY=()
+                        else
+                          _ade_log INFO "createview: don't have a specific view yet (prev=$prev, cur=$cur), suggest from args: ${COMP_WORDS[*]}"
+                          # opts=$(_ade_lsviews $cur) # list *existing* views, showing existing views...
+                          # ..or, suggest view name based on options, hostname, existing views, etc
+                          local suggest_v1="" suggest="" cmt="" sufx="" pref_series="" def_series="" tstamp=$(date '+%Y%m%d') h=$(hostname | sed 's/\..*//')
+
+                          if echo "$prev" | _ade_grepq "$(whoami)_"
+                          then # save time, don't recalculate suggestion ("$suggest" = "$prev")
+                            _ade_log INFO "createview: no completion (prev=$prev): don't insert view name twice."
+                            opts=""
+                          else
+                            echo "${COMP_WORDS[*]}" | _ade_grepq -- "-tip_default" && sufx="_tip"
+                            echo "${COMP_WORDS[*]}" | _ade_grepq -- "-latest" && sufx="_latest"
+                            cmt=$(_ade_getopt  "-c"    "${COMP_WORDS[*]}") && sufx="_${cmt}${sufx}"
+                            # get series or label (synonyms: {-prod,-schema},  -l(abel), -ser(ies))
+                            def_series=$( _ade_getopt  "-series"   "${COMP_WORDS[*]}") \
+                               || def_series=$(_ade_getopt  "-ser"     "${COMP_WORDS[*]}") \
+                               || def_series=$(_ade_getopt  "-schema"  "${COMP_WORDS[*]}") \
+                               || def_series=$(_ade_getopt  "-prod"    "${COMP_WORDS[*]}") \
+                               || def_series=$(_ade_getopt  "-label"   "${COMP_WORDS[*]}") \
+                               || def_series=$(_ade_getopt  "-l"       "${COMP_WORDS[*]}")
+
+                            pref_series=$(_ade_preferred_series -p 2 $def_series)
+                            suggest_v1="$(whoami)_${pref_series}_${h}_${tstamp}${sufx}"
+                            suggest=$(echo "$suggest_v1" | _ade_to_lower)
+                            opts=$suggest
+                            _ade_log INFO "createview (u=$(whoami) sfx=$sufx series={default=$def_series, preferred=$pref_series}, h=$h, orig=$suggest_v1); suggest: \"$opts\""
+                          fi
+                        fi
+                        ;;
+                  esac
+                  ;;
+
+             ci | co | diff | lshistory | mkelem | mv | rm | unco | unmkdir | unreserve | unrm | unrmname )
+                  _ade_log DEBUG "case: ci|co|diff|lshistory|mkelem|mv|rm|unco|unmkdir|unreserve|unrm|unrmname)"
+                  COMPREPLY=($(_ade_filelist ${cur}))
+                  ;;
+
+             lsco )
+                  _ade_log DEBUG "case: lsco)"
+                  case "$prev" in
+                   -view )
+                      _ade_log DEBUG "case: lsco/prev=-view)"
+                      opts=$(_ade_lsviews $cur)
+                      ;;
+                   -user )
+                      _ade_log DEBUG "case: lsco/prev=-user)"
+                      opts=$(whoami)
+                      ;;
+                    * )
+                      _ade_log DEBUG "case: lsco/prev=*)"
+                      COMPREPLY=($(_ade_filelist ${cur}))
+                      ;;
+                  esac
+                  ;;
+
+             showseries)
+                  _ade_log DEBUG "case: showseries)"
+                  case "$prev" in
+                    -platform )  # e.g, series PLSQL_8.1.5_SOLARIS => return platform SOLARIS
+                      _ade_log DEBUG "case: showseries/prev=-platform)"
+                       opts=$(_ade_showseries ${tmp_prod}  awk -F_ '{ print $NF }' | sort -u)
+                       ;;
+                    -prod | -product )
+                      _ade_log DEBUG "case: showseries/prev=-prod|product) _ade_lsprod -a $cur"
+                       opts=$(_ade_lsprod -a $cur)
+                       ;;
+                    * )
+                      _ade_log DEBUG "case: showseries/prev=*)"
+                       opts=
+                       ;;
+                  esac
+                  ;;
+
+             showlabels)
+                  _ade_log DEBUG "case: showlabels)"
+                  # to match series, need product; but "-product <schema>" isn't
+                  # a separate option; rather, it's just the prefix of $cur
+                  [ "$prev" = "-series" ] \
+                      && opts=$(_ade_showseries ${tmp_prod}) \
+                      || opts=${!opts_cmd}
+                  ;;
+
+             lstrans)
+                  _ade_log DEBUG "case: lstrans)"
+                  opts=${!opts_cmd}
+                  ;;
+
+             begintrans )
+                  _ade_log DEBUG "case: begintrans)"
+                  # complete 'begintrans' w/ option to -reopen
+                  _ade_log INFO "match (begintrans): command=$cmd, prev=$prev, cur=$cur, opts_cmd=$opts_cmd=${!opts_cmd}"
+                  if _ade_is_trans "$prev"; then
+                     _ade_log INFO "match (begintrans), already have txn($prev), don't use another"
+                     opts=${!opts_cmd}
+                  elif [ "$prev" = "-reopen" ]; then
+                     opts=
+                     COMPREPLY=($(_ade_lstrans $cur))
+                  else
+                     # to just complete options, opts=${!opts_cmd}
+                     # instead, we can try to generate a txn name (which is of course done
+                     # by default, anyway -- this is just a (optional) more meaningful txn name)
+                     local suggest="" sufx="" desc="" diag="" bug="" backport=""
+                     desc=$(_ade_getopt  "-c"    "${COMP_WORDS[*]}") || desc="txn"
+                     diag=$(_ade_getopt  "-diag" "${COMP_WORDS[*]}") && desc="${desc}_diag-${diag}"
+                     bug=$(_ade_getopt   "-bug"  "${COMP_WORDS[*]}") && bug="bug_${bug}"
+                     backport=$(_ade_getopt "-backport"  "${COMP_WORDS[*]}") && bug="${bug:-"backport"}_bug_${backport}"
+
+                     [ "$bug" != "" ] && sufx="_${bug}"
+
+                     suggest="${LOGNAME}_${desc}_$(_ade_mk_tstamp_d -s)${sufx}"
+                     opts="$suggest"
+                  fi
+                  ;;
+
+             describetrans )
+                  _ade_log DEBUG "case: describetrans)"
+                  _ade_log INFO "match (describetrans): command=$cmd, prev=$prev, cur=$cur, opts_cmd=$opts_cmd=${!opts_cmd}"
+                  if _ade_is_trans "$prev"; then
+                     _ade_log INFO "match (describetrans), already have txn($prev), don't use another"
+                     opts=${!opts_cmd}
+                  else
+                     #opts=${!opts_cmd}
+                     _ade_lstrans x $cur
+                     COMPREPLY=($(_ade_lstrans $cur))
+                  fi
+                  ;;
+
+             *trans )
+                  _ade_log DEBUG "case: *trans)"
+                  _ade_log INFO "match (*trans): command=$cmd, prev=$prev, cur=$cur, opts_cmd=$opts_cmd=${!opts_cmd}"
+                  #opts=$(ade lstrans | grep '|' | cut -d\| -f1)
+                  #opts=$(_ade_lstrans $cur)
+
+                  if _ade_is_trans "$prev"; then
+                     _ade_log INFO "match (*trans), already have txn($prev), don't use another"
+                     opts=${!opts_cmd}
+                  elif [ "$prev" = "-reopen" ]; then
+                     _ade_lstrans x $cur
+                     COMPREPLY=($(_ade_lstrans $cur))
+                  else
+                     opts=${!opts_cmd}
+                  fi
+                  ;;
+
+             * )
+                  _ade_log DEBUG "case: *)"
+                  case "$prev" in
+                    -user )
+                       _ade_log DEBUG "case: */prev=-user)"
+                       opts=$(whoami)
+                       ;;
+                    -view )
+                       _ade_log DEBUG "case: */prev=-view)"
+                       opts=$(_ade_lsviews $cur)
+                       ;;
+                    -txn )
+                       opts=$(_ade_lstrans)
+                       _ade_log DEBUG "case: */prev=-txn)"
+                       ;;
+                    -series )
+                       _ade_log DEBUG "case: */prev=-series)"
+                       opts=$(_ade_showseries ${tmp_prod})
+                       ;;
+                    -schema | -prod | -product )
+                       _ade_log DEBUG "case: */prev=-schema|-prod|-product)"
+                       opts=$(_ade_lsprod -a $cur)
+                       ;;
+                    * )
+                       opts=
+                       ;;
+                  esac
+                  ;;
+          esac
+
+          _ade_log DEBUG "==========end case: command=$cmd, opts=\"$(echo $opts)\", COMPREPLY=\"$COMPREPLY\""
+
+          #  if COMPREPLY is set, use it. Otherwise generate reply from $opts.
+          [ -n "$opts" -a -z "$COMPREPLY" ] && COMPREPLY=($(compgen -W "$opts" -- $cur))
+      fi
+  fi
+
+  return 0
+}
+
+printf "** configuring ade bash completion\n"
+
+##########################################################################
+# Enable completion for 'ade'. Try the most 'complete' completion possible.
+# Must use "-o nospace" to have proper handling of path completion, or else
+# we get spaces after every dir/file (only available in newer bash).
+
+# complete -o nospace -F _ade ade >/dev/null 2>&1
+# complete -F _ade ade
+
+if [ ${BASH_COMPLETION_ADE_LOADED:-0} -eq 0 ]; then
+  _ade_log DEBUG "setup bash completion for ADE: ${BASH_SOURCE[0]} ..."
+  complete -o bashdefault -o default -o nospace -F _ade ade 2>/dev/null \
+     || complete -o default -o nospace          -F _ade ade 2>/dev/null \
+     || complete -o default                     -F _ade ade 2>/dev/null \
+     || complete                                -F _ade ade
+
+  BASH_COMPLETION_ADE_LOADED=1
+else
+  _ade_log DEBUG "setup bash completion for ADE: ${BASH_SOURCE[0]} (already completed: $BASH_COMPLETION_ADE_LOADED)"
+  (( BASH_COMPLETION_ADE_LOADED ++ ))
+fi
+
+# return true
+:
+
