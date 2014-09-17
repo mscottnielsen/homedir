@@ -5,16 +5,16 @@
 # Lists ADE views matching a pattern, optionally using and/or refreshing the view.
 #
 # Matching view(s) may be:
-#   * listed ("ade lsview", optionally "long" listing);
-#   * used ("ade useview");
-#   * destroyed;
-#   * refreshed;
+#   * listed (basically, "ade lsview", with optional "long" listing)
+#   * used ("ade useview")
+#   * destroyed
+#   * refreshed
 #   * used to create a duplicate view (new name, same label/series).
 #
-# Views may be selected by:
-#   * matching a regexp (foo.*[0-9]) or simple glob (foo*99);
-#   * and/or views with with open transactions;
-#   * and/or out-of-date views, needing a 'refresh'
+# Select views based on:
+#   * a regexp (foo.*[0-9]) or simple glob (foo*99);
+#   * views having open transactions;
+#   * views that are out-of-date, requiring a 'refresh'
 #
 # Options (run with '-h' to see all options):
 #   -h   print full usage
@@ -38,32 +38,28 @@
 # Note: external script used for refreshing the view (ade-refresh-view.sh)
 ##############################################################################
 
-_ade_lsview_usage() {
+lsview_usage() {
   cat <<USAGE_EOF
   Usage: lsview [grep_opt] [-c -d -h -l -o -r -s -t -u] [pattern]
 
-  List ADE views by pattern using either a regular expression or wildcard, matching
-  either just the view name (default), or the ADE view 'long' listing (-l). Optionally
-  lists views with an open transaction (-t) or out-of-date (-o) views, which can then
-  be refreshed, 'used', or deleted.
-  Note: external scripts are called for some actions, and view names are expected to
-  be formatted as: {user}_{series}_[host_][date_][desc_]{tip|latest|label}
-
-  Examples:
-    $ lsview 'oggcore*20140602'
+  List ADE views by pattern (reg-exp or wildcard), based on either view name or
+  the ADE 'long' listing (-l). Optionally list views having an open transaction (-t)
+  or out-of-date (-o). Matching views may be: refreshed, entered (used), deleted, or
+  used to create a new, duplicate view with the same settings.  Examples:
+    $ lsview oggcore*20140602
         mnielsen_oggcore_main_adc987654_20140602_perftest_latest
         mnielsen_oggcore_11_2_1_slc123456_20140602_bug_123456_tip
-    $ lsview -r 'oggcore*20140602'
+    $ lsview -r oggcore*20140602
         ...refreshing (2) matching views... (etc)
     $ lsview -r -u 'oggcore*bug*tip'
         ...refreshing (1) matching views...
         ...entering view: mnielsen_oggcore_11_2_1_slc123456_20140602_bug_123456_tip
 
   Options/arguments:
-    {pattern}   - regexp/wildcard for view name/desc ('^foo.*[0-9].*bar' or 'foo*bar')
+    {pattern}   - regexp/wildcard for view name/desc ('foo*bar', or: '^foo.*[0-9].*bar')
     [grep_opt]  - grep option: {-i -v -q -n -w -Z --color=[never|always|auto]}
     -h          - print usage message
-    -l          - long listing of matching views
+    -l          - show view long listing
     -y          - assume "yes" to some questions (eg, "destroy view? [y/n]")
 
   Selecting:
@@ -76,6 +72,9 @@ _ade_lsview_usage() {
     -d   - destroy matching view(s)
     -r   - refresh the matching views, eg: lsview 'dev[0-9].*tip' or '*latest'
     -u   - use the matching view (if a single view matches)
+
+  Notes: external scripts called to create new views. Views names should be formatted
+  as: {user}_{series}_[host_][date_][desc_]{tip|latest|label}
 
 USAGE_EOF
 }
@@ -91,7 +90,19 @@ PROG_DIR="$(cd "$(dirname "${PROG_PATH:-$PWD}")" 2>/dev/null 1>&2 && pwd)"
 ADE_PROG="$DO_RUN $ADE_EXE"
 
 ##############################################################################
-_ade_lsview_ask() {
+lsview_warn() {
+  local pref="## warning: "
+  [ $# -gt 0 ] && [ "$1" = "-e" ] && shift && pref="## error: "
+  if [ $# -gt 0 ]; then
+    printf "$@\n" | sed "s/^/$pref/" 1>&2
+  else
+    sed 's/^/$pref/' 1>&2
+  fi
+  return 0
+}
+
+##############################################################################
+lsview_ask() {
   # Ask "are you sure [y|n]", return true(0) or false(1,2)
   # Usage: ask [-q] "question..." && continue || exit
   #   -q   add option "q(uit)" returning false (2)
@@ -113,8 +124,8 @@ _ade_lsview_ask() {
 }
 
 ##############################################################################
-# usage: _ade_lsview_get_view_name [-l|-n] [views]
-_ade_lsview_get_view_name() {
+# usage: lsview_get_view_name [-l|-n] [views]
+lsview_get_view_name() {
   # Convert input "view1,view2,view3" to one view per line. Also works in a pipe.
   # If working with 'long' listings, the input is trimmed, returning only view name),
   # one per line. If given (-l) return all original args (keep "long" view listing).
@@ -122,7 +133,7 @@ _ade_lsview_get_view_name() {
   local format_output=trunc
   [ $# -gt 0 -a "$1" = "-l" ] && format_output=cat && shift
   [ $# -gt 0 -a "$1" = "-n" ] && format_output=word_count && shift
-  [ "${1:0:1}" = "-" ] && { echo "## error: usage: _ade_lsview_get_view_name [-l][-n] {view1[,view2...]}" >/dev/null; return 2; }
+  [ "${1:0:1}" = "-" ] && { echo "## error: usage: lsview_get_view_name [-l][-n] {view1[,view2...]}" >/dev/null; return 2; }
 
   # truncate output after "|"
   trunc() { cut -d\| -f1 | sed 's/  *//g' ; return 0; }
@@ -142,9 +153,9 @@ _ade_lsview_get_view_name() {
 }
 
 ##############################################################################
-_ade_lsview_grep() {
+lsview_grep() {
   # Filter "ade lsviews" output
-  # Usage: _ade_lsview_grep [ -l -t -s ] {pattern} {grep_opts}
+  # Usage: lsview_grep [ -l -t -s ] {pattern} {grep_opts}
   #   {pattern}  - optional reg exp, show views matching the pattern
   #   {grep_opts} - any valid grep option(s)
   #   -l    -  long ade lsviews listing
@@ -169,8 +180,8 @@ _ade_lsview_grep() {
          ;;
       t) only_tx=true
          ;;
-      *) printf "## error: unknown option ($args). Run with '-h' (help) for full usage.\n" 1>&2
-         printf "** Usage: [-c -d -h -l -o -r -s -t -u] pattern [grep-opts]\n" 1>&2
+      *) lsview_warn "unknown option ($args). Run with '-h' (help) for full usage"
+         printf "## Usage: [-c -d -h -l -o -r -s -t -u] pattern [grep-opts]\n" 1>&2
          return 2
          ;;
     esac
@@ -191,9 +202,9 @@ _ade_lsview_grep() {
 
   filter_view_name() {  # view name only, UNLESS long listing OR list txn's
     if $only_tx || $out_of_date ; then
-      _ade_lsview_get_view_name -l
+      lsview_get_view_name -l
     else
-      _ade_lsview_get_view_name $long_opt
+      lsview_get_view_name $long_opt
     fi
   }
 
@@ -209,13 +220,13 @@ _ade_lsview_grep() {
       | filter_view_name | sort \
       | egrep $grep_opts "${pattern:-".*"}" \
       | filter_tx \
-      | _ade_lsview_get_view_name $long_opt \
+      | lsview_get_view_name $long_opt \
       | print_results
 }
 
 
 ##############################################################################
-_ade_lsview_to_lower() {
+lsview_to_lower() {
   do_sed () { sed -e 's/\(.*\)/\L\1/; s/-/_/g' ; }
   if [ $# -gt 0 ] ; then
      printf "$@" | do_sed
@@ -228,7 +239,7 @@ _ade_lsview_to_lower() {
 
 
 ###############################################################################
-_ade_lsview_create_similar_view() {
+lsview_create_similar_view() {
   # Given an existing view, create a new view (similar name, with updated date
   # timestamp), with the same options. Determine
   #   (1) "-latest" or "-tip_default" from view name,
@@ -263,7 +274,7 @@ _ade_lsview_create_similar_view() {
                       -e 's/--*/_/g'
   }
 
-  new_view_series=$(_ade_lsview_grep -s ${orig_view_name})  # only matching view series names
+  new_view_series=$(lsview_grep -s ${orig_view_name})  # only matching view series names
 
   # generate new view name: add date, "latest" or "tip" (avoiding duplicate strings)
   if [ "$desc" = "" ]; then
@@ -283,7 +294,7 @@ _ade_lsview_create_similar_view() {
               -e 's/  */_/g' \
               -e "s/_[^_]\{1,\}\$/_$(date '+%Y%m%d')&/g" \
               -e 's/[-_][-_]*/_/g' \
-        | _ade_lsview_to_lower)
+        | lsview_to_lower)
   fi
 
   # if given '-n' option, just print the name of the view that would be created
@@ -291,9 +302,9 @@ _ade_lsview_create_similar_view() {
 
   opts="-series ${new_view_series:-'series_unset'} $new_view_type $opts"
 
-  echo "** creating a new view based on existing view (opts=\"$opts\")"
-  echo "** run: ade createview "$new_view_name" $opts"
-  _ade_lsview_ask "*** create view? " || { echo "** not creating view"; return 2; }
+  echo "## creating a new view based on existing view (opts=\"$opts\")"
+  echo "## run: ade createview "$new_view_name" $opts"
+  lsview_ask "## create view? " || { echo "## not creating view"; return 2; }
   $ADE_PROG createview "$new_view_name" $opts
   # return $? # => return status of 'createview'
 }
@@ -327,7 +338,7 @@ lsview() {
             ;;
         -d) do_destroy=true        # destroy view(s) matching pattern
             ;;
-        -h) _ade_lsview_usage
+        -h) lsview_usage
             return 2
             ;;
         -l) ls_opt="$ls_opt -l"    # long listing of view names
@@ -345,7 +356,7 @@ lsview() {
             do_list=false
             ;;
         -y) ask=false
-            printf "## warning: not asking, and forcing refresh\n" 1>&2
+            lsview_warn "not asking, and forcing refresh"
             refresh_script_opts="-f"
             ;;
          *) # one pattern, and the rest passed to useview/refreshview
@@ -359,40 +370,41 @@ lsview() {
   echo "$pattern" | egrep '[$\[^]|\.\*' >/dev/null 2>&1 || pattern="${pattern//[* ]/.*}"
 
   # all matching views, on one line separated by commas
-  views=$( _ade_lsview_grep $ls_opt "${pattern}" ${grep_opts} | paste -sd, - )
-  view_count=$(_ade_lsview_get_view_name -n "$views")
+  views=$( lsview_grep $ls_opt "${pattern}" ${grep_opts} | paste -sd, - )
+  view_count=$(lsview_get_view_name -n "$views")
 
   [ $view_count -eq 0 ] \
     && printf "# no views matching pattern \"${pattern:-"*"}\",${list_msg}\n" 1>&2 \
     || printf "# pattern=\"${pattern:-"*"}\",${list_msg} ($view_count matches)\n" 1>&2
 
-  [ ! -f "$ADE_REFRESH_SCRIPT" ] && script_found=false \
-    && { printf "\n## warning: script not found: ${ADE_REFRESH_SCRIPT}\n" 1>&2; }
+  [ ! -f "$ADE_REFRESH_SCRIPT" ] && script_found=false lsview_warn "script not found: ${ADE_REFRESH_SCRIPT}"
 
   $do_refresh && ! $script_found \
     && { printf "## error: can't refresh view, script not found: ${ADE_REFRESH_SCRIPT}\n" 1>&2; return 2; }
 
   $do_create && [ $view_count -gt 1 ] \
-    && { printf "## warning: more than one view matches pattern, can't create duplicate view\n" 1>&2; return 2; }
+    && { lsview_warn "more than one view matches pattern, can't create duplicate view"; return 2; }
 
   $do_useview && [ $view_count -gt 1 ] \
-    && { printf "## warning: more than one view matches pattern, can't run \'ade useview\'\n" 1>&2; return 2; }
+    && { lsview_warn "more than one view matches pattern, can't run \'ade useview\'"; return 2; }
 
   # list view(s)
   if $do_list ; then
-    echo "$views" | _ade_lsview_get_view_name -l
+    echo "$views" | lsview_get_view_name -l
     res=$?
   fi
 
   # create new view, similar to matching view (only if one match)
   if $do_create ; then
     if [ $view_count -gt 1 ] ; then
-      printf "## warning: multiple views match pattern, unable to duplicate view\n" 1>&2
+      lsview_warn "multiple views match pattern, unable to duplicate view"
       res=3
     elif [ $view_count -eq 1 ] ; then
-      view_name=$(_ade_lsview_get_view_name "$views")
-      new_view_name=$(_ade_lsview_create_similar_view -n $view_name)
-      _ade_lsview_create_similar_view "$view_name" "$extra" || { new_view_name=""; return 2; }
+      #set -x
+      view_name=$(lsview_get_view_name "$views")
+      new_view_name=$(lsview_create_similar_view -n $view_name)
+      lsview_create_similar_view "$view_name" "$extra" || { new_view_name=""; return 2; }
+      #set +x
       res=$?
     else
       printf "## no matching view found\n" 1>&2
@@ -403,7 +415,7 @@ lsview() {
   # do refresh view(s) (multiple matches allowed)
   if $do_refresh && $script_found && [ $view_count -gt 0 ] ; then
     [ "$new_view_name" != "" ] && tmp=$new_view_name || tmp=$views
-    for v in $(_ade_lsview_get_view_name $tmp);  do
+    for v in $(lsview_get_view_name $tmp);  do
       $DO_RUN $ADE_REFRESH_SCRIPT $refresh_script_opts "$v" $extra 1>&2 \
          || { printf "\n## error: can't refresh \"$v\" \"$extra\" ($ADE_REFRESH_SCRIPT $refresh_script_opts)\n" 1>&2 ; return 2; }
     done
@@ -413,15 +425,15 @@ lsview() {
   # destroy view(s) (multiple matches allowed)
   if $do_destroy ; then
     if [ $view_count -gt 1 ] ; then
-      printf "## warning: multiple views match pattern ($view_count views)\n" 1>&2
+      lsview_warn "multiple views match pattern ($view_count views)"
       if $ask ; then
-        _ade_lsview_ask "** continue to destroy all matching views? " || return 2
+        lsview_ask "## continue to destroy all matching views? " || return 2
       fi
     fi
 
-    for v in $(_ade_lsview_get_view_name $views);  do
+    for v in $(lsview_get_view_name $views);  do
       if $ask ; then
-        _ade_lsview_ask "** Warning: destroy view: \"$v\"" || return 2
+        lsview_ask "## warning: destroy view: \"$v\"" || return 2
       fi
       echo "ade destroyview -rm_twork -force $v"
       $ADE_PROG destroyview -rm_twork -force $v \
@@ -432,16 +444,16 @@ lsview() {
   # use view (only if one match)
   if $do_useview ; then
     if [ $view_count -gt 1 ] ; then
-      printf "## warning: multiple views match pattern, not using view\n" 1>&2
+      lsview_warn "multiple views match pattern, not using view"
       res=3
     elif [ $view_count -eq 1 ] ; then
-     view_name=$(_ade_lsview_get_view_name "$views")
+     view_name=$(lsview_get_view_name "$views")
      [ "$new_view_name" != "" ] && view_name=$new_view_name
       printf "## entering view \"$view_name\" $extra\n" 1>&2
       $ADE_PROG useview "$view_name" $extra  #1>&2
       res=$?
     else
-      printf "** no matching view found\n" 1>&2
+      printf "## no matching view found\n" 1>&2
       res=1
     fi
   fi
