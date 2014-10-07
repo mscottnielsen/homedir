@@ -10,52 +10,39 @@
 
 # vim: {zo} open current fold; {zm,zM} close all (level--,level=0); {zr,zR} open all
 
-# listing files...
+# listing files
 alias la='ls -lA'
 alias ll='ls -l'
 alias l='ls -l'
 alias lm='ls -l | more'
 alias lt='ls -lt'
 alias ltr='ls -ltr'
+alias ltru='ls -ltru'
 lg() { ls -lA | egrep ${@:-.}; }
 
-# file sizes... list files, recursively, and sort based on file size (largest, last)
+# list files recursively, sorting on file size (largest, last)
 alias lsort="find . -type f -printf '%k\t%s\t%u\t%f\t%h\n' | sort -n"
+alias findm='find . -name "Make*[ke]" -print'
 alias d="df -h ."
-
-# alias less='less -r'
-# alias rm='rm -i'
-# alias whence='type -a'
 alias h='history'
 alias m='more'
 alias c='clear'
 
-# alias for hgrep, if possible with egrep.
-# if no hgrep and egrep
+# if no hgrep, try to simulate w/ egrep
 unalias hgrep 2>/dev/null 1>&2
-if ! type hgrep 2>/dev/null 1>&2
-then
-  if echo . | egrep --color=auto '.' 2>/dev/null 1>&2
-  then
+if ! type hgrep 2>/dev/null 1>&2 ; then
+  if echo . | egrep --color=auto '.' 2>/dev/null 1>&2 ; then
     hgrep () { egrep --color=auto "$@"; }
+    alias eg='egrep --color=always'     # use color with more/less, too
   else
     hgrep() { egrep "$@"; }
   fi
 fi
-#export hgrep
-
-alias eg='egrep --color=always'     # use color with more/less, too
-
-# find makefiles
-alias findm='find . -name "Make*[ke]" -print'
-
 
 ############################################################################
-# print or update homedir release version
-#
+# print/update release version of 'homedir'
 homedir_version() {
   [ "$#" -eq 0 ] && echo ${HOMEDIR_VER:-"1"} && return 0
-
   local opt OPTIND OPTARG
   local b=$(readlink -f $HOME/.bashrc)
   local p=$(readlink -f $HOME/.profile)
@@ -63,21 +50,16 @@ homedir_version() {
 
   usage() {
     printf "
-    Generate new or print current homedir version from git HEAD,
-    stored in \".bashrc\".
-    By default prints current homedir version (from environment,
-    already in memory.)
-
-    Usage: homedir_version [-g|-u]
-       -f  print current version from the bashrc file
-       -g  print new version from git (not the one in the file)
-       -u  update version in .bashrc
+    Print or update the version of the 'homedir' project.
+    Usage: homedir_version [-f|-g|-u]
+       -f  print current version from the bashrc file.
+       -g  print a new version, directly from git HEAD.
+       -u  update the version number in .bashrc
        -h  print usage message\n"
     return 0
   }
 
-  get_current() {
-    # return ver if it's a number, else return false
+  get_current() { # return version if it's a number, else return false
     local ver=$(cd $dir && git rev-list  HEAD 2>/dev/null | wc -l)
     [ "$ver" -eq "$ver" ] && echo "$ver" && return 0
     printf "** error: homedir project version not a number (ver=\"$ver\")\n" 1>&2
@@ -106,14 +88,12 @@ homedir_version() {
       g) # print current git revision - from env, not bashrc
          get_current && return 0 || return 2
          ;;
-      h) usage
-         return 2
+      h) usage; return 2
          ;;
-      u) # update .bashrc and .profile (the substitution probably only works w/ linux sed)
+      u) # update .bashrc/.profile (only works w/ linux sed)
          do_update $b $p
          ;;
-      *) usage
-         return 2
+      *) usage; return 2
          ;;
     esac
   done; shift $((OPTIND-1)); OPTIND=1
@@ -121,19 +101,17 @@ homedir_version() {
 }
 
 ############################################################################
-# start a new shell, set to a particular version of java (path will
-# be correctly setup in .bashrc)
+# subshell using the given java version (path will be set in .bashrc)
 alias java5='JAVA_HOME=$JAVA5_HOME bash'
 alias java6='JAVA_HOME=$JAVA6_HOME bash'
 alias java7='JAVA_HOME=$JAVA7_HOME bash'
 alias java8='JAVA_HOME=$JAVA8_HOME bash'
 
 ############################################################################
-alias gr=gradle
+alias gr='gradle --daemon'
 
 ############################################################################
-# start gvim, optionally embiggened or with wider-view/smaller-font (logs);
-# start in bg, ignore warnings, fix unity missing menu (ubuntu 11.04+).
+# start gvim in bg, no warnings, custom window/font size (fix unity missing menu; ubuntu 11.04+)
 export GVIM_EXE=${GVIM_EXE:-gvim}
 gvim_ignore_msgs='static_gravity|g_set_prgname|extension.*missing|^ *$'
 
