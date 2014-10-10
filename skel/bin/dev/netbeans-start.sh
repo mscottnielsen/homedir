@@ -3,7 +3,7 @@
 # Use java7/java8+ to run the IDE. Projects can use other platforms.
 export JAVA_HOME=/opt/jdk8
 #export JAVA_HOME=/usr/lib/jvm/java-7-openjdk-amd64
-export PATH=$JAVA_HOME/bin
+export PATH=$JAVA_HOME/bin:$PATH
 
 # optionally use bundled netbeans maven; just make sure no other maven home is set
 unset M2_HOME MAVEN_HOME
