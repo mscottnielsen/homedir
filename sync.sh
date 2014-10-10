@@ -1,36 +1,53 @@
 #!/bin/bash
 
 #############################################################################
-# to keep upstream (github) in sync with local fork (orahub)
+# How to make changes, pushing to upstream (github) by default,
+#  and then keep that in sync with local intranet fork.
 #############################################################################
 
-## clone the fork...
+## clone the local intranet fork...
 # $ git clone git@orahub.oraclecorp.com:mike_nielsen/homedir.git
 
-## ..or, get latest if already cloned
-git pull
-
-## list remote
-# $ git remote -v 
+## list remote:
+# $ git remote -v
 # origin   git@orahub.oraclecorp.com:mike_nielsen/homedir.git (fetch)
 # origin   git@orahub.oraclecorp.com:mike_nielsen/homedir.git (push)
 
-## add the original upstream repo
-# $ git remote add upstream  https://github.com/mscottnielsen/homedir.git 
-# $ git remote -v 
+## add the original upstream repo (github)
+# $ git remote add upstream  https://github.com/mscottnielsen/homedir.git
+
+## verify:
+# $ git remote -v
 # origin   git@orahub.oraclecorp.com:mike_nielsen/homedir.git (fetch)
 # origin   git@orahub.oraclecorp.com:mike_nielsen/homedir.git (push)
 # upstream https://github.com/mscottnielsen/homedir.git (fetch)
 # upstream https://github.com/mscottnielsen/homedir.git (push)
 
+#############################################################################
+# make changes as desired, but prefer to push them to the upstream source (github).
+# note that this example isn't pushing anything to the internal intranet fork.
+#############################################################################
 
-## get updates from original (set proxy if necessary)
-. ~/bin/set_proxy.sh 
+## make changes and push to upstream
+
+# git add path/to/file
+# git commit -m 'message' path/to/file
+git push -u upstream master
+
+#############################################################################
+# to keep upstream (github) in sync with local intranet fork
+#############################################################################
+
+## get latest from intranet fork
+git pull
+
+## get latest updates from original upstream repo (set proxy if necessary)
+. ~/bin/set_proxy.sh
 git fetch upstream
 
-## merge those upstream changes with the fork
+## merge those upstream changes with the intranet fork
 git merge upstream/master
 
-## push changes to fork
+## push changes to intranet fork
 git push origin
 
