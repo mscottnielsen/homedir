@@ -32,7 +32,7 @@
 
 # git add path/to/file
 # git commit -m 'message' path/to/file
-git push -u upstream master
+git push -v -u upstream master
 
 #############################################################################
 # to keep upstream (github) in sync with local intranet fork
@@ -43,11 +43,11 @@ git pull
 
 ## get latest updates from original upstream repo (set proxy if necessary)
 . ~/bin/set_proxy.sh
-git fetch upstream
+git fetch -v upstream
 
 ## merge those upstream changes with the intranet fork
-git merge upstream/master
+git merge -v upstream/master
 
 ## push changes to intranet fork
-git push origin
+git push -v origin
 
