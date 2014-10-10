@@ -6,34 +6,55 @@
 ## we started on.
 ##
 git_update_all() {
-  local do=
-  local cont=true
+  local opt OPTIND OPTARG
+  local run=
+  #local run="echo"  # debug
+  local pullopt="--ff-only" do_status=false do_continue=true
   local br=$(git name-rev --name-only HEAD 2>/dev/null)
 
-  [ "$1" = "-h" ] \
-    && printf "Usage: git update-all [-h | -n]
-      -n   dry-run, prints only what would be executed
-      -h   print usage
-    Updates all local branches (git checkout/pull fast-forward). If successful,
+  usage() { cat<<EOF
+    Usage: git update-all [-h|-n|-r|-s]
+      -h   print usage and return
+      -n   dry-run, only print the git-pull command to execute. Does run
+               the git checkout/status. Output can be used as a script.
+      -r   git pull --rebase (default is --fast-forward)
+      -s   also print branch status
+    Update all local branches (git checkout/pull fast-forward). If successful,
     working tree is returned to original branch (currently: $br).
-    (This is a custom git extension script: ${BASH_SOURCE[0]})\n" \
-    && return 0
+    This is a custom git extension script: ${BASH_SOURCE[0]}
+EOF
+    return 0
+  }
 
-  [ "$1" = "-n" ] && shift && do=echo
+  git_status() {
+      $do_status && git status 2>&1 | sed 's/^/# /'
+      return 0
+  }
 
-  echo "# ====starting from branch: $br"
+  while getopts hnrs opt; do
+    case "$opt" in
+      h) usage; return 0;;
+      n) run=echo;;
+      r) pullopt="--rebase";;
+      s) do_status=true;;
+      *) usage ; return 2;;
+    esac
+  done; shift $((OPTIND-1)); OPTIND=1
+
+  echo "# === starting from branch: $br"
   for x in $( git branch | cut -c3- )
   do
-     echo "# ===(continue? $cont)====== $x"
-     $cont \
-        && $do git checkout $x \
-        && $do git pull --ff-only || cont=false
+     printf "\n# === ${x}   (continue? $do_continue)\n"
+     $do_continue \
+        && git checkout "$x" \
+        && git_status \
+        && $run git pull $pullopt || do_continue=false
   done
 
-  $cont \
-      && echo "# ====return to branch: \"$br\"" \
+  $do_continue \
+      && printf "\n# === return to branch: \"$br\"\n" \
       && [ ${#br} -gt 0 ] \
-      && $do git checkout $br
+      && $run git checkout $br
 }
 
 git_update_all "$@"
