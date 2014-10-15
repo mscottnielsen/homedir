@@ -2,7 +2,9 @@
 
 #############################################################################
 # How to make changes, pushing to upstream (github) by default,
-#  and then keep that in sync with local intranet fork.
+# and keeping that in sync with local intranet fork.
+#
+# (This is more just notes for commands to run than an actual script.)
 #############################################################################
 
 ## clone the local intranet fork...
@@ -28,18 +30,19 @@
 # note that this example isn't pushing anything to the internal intranet fork.
 #############################################################################
 
-## make changes and push to upstream
-
-# git add path/to/file
-# git commit -m 'message' path/to/file
-git push -v -u upstream master
+## make changes and push to upstream:
+### for each file modified; do
+###    git add path/to/file
+###    git commit -m 'message' path/to/file
+###  done
+###  git push -v -u upstream master
 
 #############################################################################
 # to keep upstream (github) in sync with local intranet fork
 #############################################################################
 
-## get latest from intranet fork
-git pull
+## pull latest from intranet fork (may have to merge, if any changes)
+git pull --ff-only -v origin/master
 
 ## get latest updates from original upstream repo (set proxy if necessary)
 . ~/bin/set_proxy.sh
