@@ -162,7 +162,7 @@ for trail in "${trails[@]}" ; do
 
   # pipe commands into logdump, filtering output
   ( x=1
-    printf "$(printf "%s" "${opts[@]/%/\n}")"
+    printf "$(printf "%s" "${opts[@]/%/\\n}")"
     while (( x++ <= num ))
     do
       printf "next\n"
