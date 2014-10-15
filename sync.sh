@@ -42,7 +42,7 @@
 #############################################################################
 
 ## pull latest from intranet fork (may have to merge, if any changes)
-git pull --ff-only -v origin/master
+git pull --ff-only -v origin master
 
 ## get latest updates from original upstream repo (set proxy if necessary)
 . ~/bin/set_proxy.sh
