@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Use java7/java8+ to run the IDE. Projects can use other platforms.
-export JAVA_HOME=/opt/jdk8
+export JAVA_HOME=/opt/jdk7
 #export JAVA_HOME=/usr/lib/jvm/java-7-openjdk-amd64
 export PATH=$JAVA_HOME/bin:$PATH
 
@@ -42,8 +42,9 @@ unset ftp_proxy
 LOOKS_HOME=$HOME/opt/lib/jgoodies
 LAF_JARS=$LOOKS_HOME/common/jgoodies-common.jar:$LOOKS_HOME/looks/jgoodies-looks.jar
 
-CP="-cp:p $LAF_JARS"
-LAF=" --laf com.jgoodies.looks.plastic.Plastic3DLookAndFeel"
+# disable jgoodies laf
+#CP="-cp:p $LAF_JARS"
+#LAF=" --laf com.jgoodies.looks.plastic.Plastic3DLookAndFeel"
 
 OPTS="$LAF $CP"
 
@@ -89,9 +90,9 @@ echo "## OPTS=$OPTS"
 echo "## CP=$CP"
 echo "## DESKTOP_SESSION=$DESKTOP_SESSION"
 
-echo ## starting gradle..."
-type gradle && gradle --daemon --quiet
-sleep 3
+#echo ## starting gradle..."
+#type gradle && gradle --daemon --quiet
+#sleep 3
 
 echo ## starting netbeans..."
 set -x
