@@ -17,7 +17,7 @@ HOMEDIR_LOG=$HOME/.h_log
 export HOMEDIR_VER HOMEDIR_LOG VERBOSE HOSTNAME PATH PS1 TR
 
 h_tstamp() {
-  local ts=$(date '+%s' 2>/dev/null)
+  ts=0; ts=$(date '+%s' 2>/dev/null) # use typed int, not local var
   [ ${#ts} -lt 4 ] && ts=$(perl -e 'print time' 2>/dev/null)
   printf "$ts"
 }
