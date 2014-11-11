@@ -543,17 +543,17 @@ _ade_elapsed() {
     (( diff_s = now - $1 ))
     #printf "diff: $diff_s" 1>&2
     if (( diff_s > $2 )); then
-      $do_print && printf "$now"  # time elapsed, print updated timestamp
-      ret=0          # return true
+      $do_print && printf -- "$now"  # time elapsed, print updated timestamp
+      ret=0           # return true
     else
-      printf $1      # time not elapsed, print given timestamp
-      ret=1          # return false
+      printf -- "$1"  # time not elapsed, print given timestamp
+      ret=1           # return false
     fi
   elif [ $# -eq 0 ]; then
-    $do_print && printf $now
+    $do_print && printf -- "$now"
     ret=1
   else
-    printf "**Error: expecting: {last} {num} (given: $@). Usage: _ade_elapsed [-q] [{timestamp} {seconds}]\n" 1>&2
+    printf -- "**Error: expecting: {last} {num} (given: $@). Usage: _ade_elapsed [-q] [{timestamp} {seconds}]\n" 1>&2
   fi
   return $ret
 }
@@ -1141,7 +1141,7 @@ if [ ${BASH_COMPLETION_ADE_LOADED:-0} -eq 0 ]; then
   BASH_COMPLETION_ADE_LOADED=1
 else
   _ade_log DEBUG "setup bash completion for ADE: ${BASH_SOURCE[0]} (already completed: $BASH_COMPLETION_ADE_LOADED)"
-  (( BASH_COMPLETION_ADE_LOADED ++ ))
+  (( BASH_COMPLETION_ADE_LOADED = BASH_COMPLETION_ADE_LOADED + 1 ))   # older bash, no autoincrement
 fi
 
 # return true
