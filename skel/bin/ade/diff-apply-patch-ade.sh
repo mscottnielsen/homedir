@@ -569,7 +569,8 @@ for patchfile ; do
 
         run ade beginmerge \
            && run ade mergetrans \
-           && run ade endmerge
+           && run ade endmerge -force_invalid_xml \
+           || printf "** Error: unable to merge txn. To continue manually, fix errors and run:\n**   ade beginmerge && ade mergetrans && ade endmerge -force_invalid_xml\n"
       else
         printf "** Patch applied, but files not checked-in, merge-req's, pre-merged, merge-merged, post-merged\n" 1>&2
         printf "** To finish applying the patch, run: \n" 1>&2
