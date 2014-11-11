@@ -79,8 +79,9 @@ lsview_usage() {
 USAGE_EOF
 }
 
-PROG_PATH=${BASH_SOURCE[0]}      # this script's name
-PROG_NAME=${PROG_PATH##*/}       # basename of script (strip path)
+PROG_PATH=${BASH_SOURCE[0]}            # this script's name
+[ "$PROG_PATH" = "" ] && PROG_PATH=$0  # (for old solaris bash 2.05)
+PROG_NAME=${PROG_PATH##*/}             # basename of script (strip path)
 PROG_DIR="$(cd "$(dirname "${PROG_PATH:-$PWD}")" 2>/dev/null 1>&2 && pwd)"
 : ${ADE_REFRESH_SCRIPT:="$PROG_DIR/ade-refresh-view.sh"}
 
