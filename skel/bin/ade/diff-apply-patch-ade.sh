@@ -14,7 +14,7 @@
 #
 # To update files in git (if ADE files are newer), assuming the patch file for
 # git was created (patch__OLD.git...NEW.ade), apply using:
-#  $ cd patch/oggadp_main/ade/oggadp
+#  $ cd patch/oggadp_dev-main/ade/oggadp
 #  $ patch [ --dry-run ] -p1 < ../../../../patch__OLD_oggadp.git__NEW_{...}
 #
 # Notes:
@@ -569,14 +569,13 @@ for patchfile ; do
 
         run ade beginmerge \
            && run ade mergetrans \
-           && run ade endmerge -force_invalid_xml \
-           || printf "** Error: unable to merge txn. To continue manually, fix errors and run:\n**   ade beginmerge && ade mergetrans && ade endmerge -force_invalid_xml\n"
+           && run ade endmerge
       else
         printf "** Patch applied, but files not checked-in, merge-req's, pre-merged, merge-merged, post-merged\n" 1>&2
         printf "** To finish applying the patch, run: \n" 1>&2
         printf "**    ade ciall \n" 1>&2
         printf "**    /usr/local/bin/mergereq -y -m mike.nielsen -r mike.nielsen -e true\n" 1>&2
-        printf "**    ade beginmerge && ade mergetrans && ade endmerge\n" 1>&2
+        printf "**    ade beginmerge && ade mergetrans -force_invalid_xml && ade endmerge\n" 1>&2
       fi
     else
       printf "** Unable to prepare ADE, won't apply patch. After correcting any errors,\n" 1>&2

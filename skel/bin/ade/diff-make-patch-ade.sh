@@ -43,7 +43,7 @@ usage() { cat<<EOF
       $ ./diff-apply.sh {patch_file}
    Create and apply patch to git:
       $ ./$PROG_NAME -g
-      $ cd oggadp_main/ade/oggadp  # same dir as 'Adapter','build'
+      $ cd oggadp_dev-main/ade/oggadp  # same dir as 'Adapter','build'
       $ patch -p1 < ../../../patch_file
 
  See also:
@@ -225,7 +225,7 @@ clone_git_repo() {
   printf "== cloning repo, branch=\"$br\", tag=\"$tag\"\n"
   git ls-remote $GIT_REMOTE  | grep "refs/heads/$br" || return 2
   git clone -b "$br" $GIT_REMOTE
-  ( cd oggadp_main
+  ( cd oggadp_dev-main
     git fetch --tags
     [ "$tag" != "" ] \
         && printf "== checkout tag=\"$tag\"\n" \
@@ -331,8 +331,9 @@ ADE_PROJ_DIR=$ADE_VIEW_ROOT/${PROJ}            # /ade/$view/oggadp/{Adapter,buil
 PATCH_DIR=${PATCH_DIR:-"$ADE_PROJ_DIR/patch"}  # temp working directory
 ADE_PROJ_DIR_LN=$PATCH_DIR/${PROJ}.ade         # link to ADE_PROJ_DIR
 GIT_PROJ_DIR_LN=$PATCH_DIR/${PROJ}.git         # link to GIT_PROJ_DIR
-GIT_PROJ_DIR=${GIT_PROJ_DIR:-"$PATCH_DIR/oggadp_main"}/ade/$PROJ
-GIT_REMOTE="git@ipubs.us.oracle.com:oggadp_main"
+GIT_PROJ_DIR=${GIT_PROJ_DIR:-"$PATCH_DIR/oggadp_dev-main"}/ade/$PROJ
+#GIT_REMOTE="git@ipubs.us.oracle.com:oggadp_main"
+GIT_REMOTE="ssh://mike.nielsen%40oracle.com@alm.oraclecorp.com:2222/oggadp_dev-main/oggadp_dev-main.git"
 
 ADE_SERIES=$(get_ade_series -g)
 SFX=${ADE_SERIES}                              # suffix for patch file (eg, ade label)
