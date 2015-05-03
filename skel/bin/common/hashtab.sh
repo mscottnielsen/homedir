@@ -34,7 +34,7 @@
 # subdirectory. Each value is stored in a file with the key as the filename.
 #
 # Variables:
-#   Uses $HASHDIR for data directory; if not set, use $TMPDIR; by default /tmp
+#   Uses $HASHDIR for data directory; if not set, use $TMPDIR (e.g. ~/temp)
 #   Changing the global HASHDIR causes everything using the hashtab
 #   script/functions (in the current shell), to begin writing to the new data
 #   storage directory.
@@ -84,7 +84,7 @@ stacktrace () {
 #
 _hashtab_dirname() {
   # if multiple users on same host, .tmphash must be writable for all, or unique per user
-  local ret tmpd=${TMPDIR:-"/tmp"}
+  local ret tmpd=${TMPDIR:-"$HOME/temp"}
   local dir=${HASHDIR:-"$tmpd"}/.tmphash-"${LOGNAME:-$USER}"
   local user=user-${HASHDIR_USER:-"${LOGNAME:-$USER}"}
   local tty=$HASHDIR_TERM
@@ -98,7 +98,7 @@ _hashtab_dirname() {
          -h          print help usage
          -v          verbose logging
 EOF
-    [ $# -gt 0 ] && { echo "error: given($#): $@" 1>&2 ; } # stacktrace 1>&2; }
+    [ $# -gt 0 ] && { echo "error: given($#): $@" 1>&2 ; } # stacktrace 1>&2;
     return 0
   }
 
