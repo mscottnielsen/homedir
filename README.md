@@ -1,14 +1,16 @@
 homedir
 =======
 
-A generic home directory (for bash), including dot-files & scripts, portable across OS's, suitable for mutliple hosts & users. Features / use-cases:
-* a home directory that is completely under version control, without the need for a separate "project" for every single user and/or host, OS.
-* separate out per-host configuration and per-user configuration. While these can be under version control, too, they can be in a separate project, since each user and each host is a separate file.  Groups of users can also share common configuration via "org" env files (eg, dev org, sysops org, xyz org,...)
-* can use for training environments, e.g., with a dozen or so "student" accounts that need to be basically the same, but also allow per-student customization.
-* makes it easy to set up and configure temporary virtual environments (VM's/containers for demo's, POC's), so they all can have the same functionality as your existing $HOME.
-* reuse your existing $HOME configuration, but without the need to manually remove your sensitive/personal info (or just to keep private various hacks that aren't ready to be shared). Personal info (env vars, files, private aliases/functions) can be in an unversioned, local file.
+A generic home directory for dot-files (eg., .bashrc), scripts, application set-up and configuration. Portable across all unix-like OS's (including cygwin), and works or mutliple users across multiple hosts (without branching or patching).
 
-To achieve these goals, all $HOME configuration is refactored into separate files for:
+Features:
+* a home directory configuration (scripts & dot-files) completely under version control. No need for a separate project for every user and/or host or OS.
+* per-host and per-user configuration may also be versioned, but is separate. Each user & host is a separate file. Groups of users may share common configuration env files (eg, dev org, sys-ops org, "xyz" org, ...)
+* useful for training environments with "student" accounts that are basically the same and need to be reset after class; but also allows per-student or per-course customization.
+* easy to set up virtual environments (VM/containers for demos, POCs), so they all have the same functionality you've come to expect from your $HOME.
+* personal info (passwords, personal files, env vars, private aliases/functions) can be in an unversioned, local file.
+
+All $HOME configuration is refactored into separate files:
 * generic configuration that applies to every user, every host, every OS (common files; most configuration goes here)
 * per-OS configuration (a lot of things go here: e.g., one file each for Linux, SunOS, HP-UX, AIX, Cygwin, MacOSX, etc)
 * per-application configuration (these are very small per-application configuration settings; a few env vars, functions)
