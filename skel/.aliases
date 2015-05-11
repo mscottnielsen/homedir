@@ -180,18 +180,18 @@ psx () {
 ############################################################################
 # recycle bin
 del() {
-  local trash=$HOME/.trash
+  local trash="$HOME/.trash"
   local maxsize=600
   [ "${TRASH_DIR}" != "" ] && trash=$TRASH_DIR
   [ $# -eq 0 -o ${1:0:1} = "-" ] \
       && printf "usage: del [file|directory]\n move files to trash bin: $trash\n" \
       && return 2
-  [ -d "$trash" ] || mkdir $trash
+  [ -d "$trash" ] || mkdir -p "$trash"
 
   for x; do
-   newname=$(date '+%Y-%m-%d')__${x//\//__}.$$   # global replace "/" in path
-   mv -i "$x" $trash/${newname}
-   (( $(du -sk $trash | cut -f1) > 1024 * $maxsize )) \
+   newname="$(date '+%Y-%m-%d')__${x//\//__}.$$"  # global replace "/" in path
+   mv -i "$x" "$trash"/"$newname"
+   (( $(du -sk "$trash" | cut -f1) > 1024 * $maxsize )) \
       && printf "** warning: trash exceeds ${maxsize}MB: $trash\n"
   done
 }
@@ -362,7 +362,7 @@ EOF
     printf "** output to file (append=$append): $f\n\n"
   fi
 
-  df -h . > /dev/null 2>&1 && do_df="df -h" || do_df="df -k"
+  df -h . > /dev/null 2>&1 && do_df="df -h --" || do_df="df -k"
 
   printf "
 ===========================================================
@@ -374,7 +374,7 @@ Report generated on: $(date)
     ( $do_df "$@" | sort -u -r
       #printf -- "-----------------------------------------------------------\n"
       printf -- "===========================================================\n"
-      du -sk "$@" | sort -n ) | log
+      du -sk -- "$@" | sort -n ) | log
       ret=$?
   else
     ( $do_df "$@" | sort -u -r
@@ -382,7 +382,7 @@ Report generated on: $(date)
       printf -- "===========================================================\n"
       printf -- ' %9s %9s %9s           %-30s\n' 'K'        'M'        'G'       'Path'
       printf -- ' %9s %9s %9s           %-30s\n' '--------' '--------' '--------' '------------------'
-      du -sk "$@" | while read val
+      du -sk -- "$@" | while read val
       do
         file=$(echo $val | cut -d' ' -f2-)
         size_k=$(echo $val | cut -d' ' -f1)
