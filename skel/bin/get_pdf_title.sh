@@ -155,8 +155,8 @@ done
 for file
 do
   if [ "$verbose" = "1" ]; then     # print verbose pdf metadata info
-    echo pdftk $file dump_data
-    pdftk $file dump_data \
+    echo pdftk "$file" dump_data
+    pdftk "$file" dump_data \
     | egrep '^InfoKey|InfoValue' \
     | sed 's/InfoValue: */=/' \
     | tr -d '\12' \
@@ -164,7 +164,7 @@ do
   fi
 
   # extended pdf filename
-  efname=$(pdftk $file dump_data \
+  efname=$(pdftk "$file" dump_data \
     | egrep '^InfoKey|InfoValue' \
     | sed 's/InfoValue: */=/' \
     | tr -d '\12' \
@@ -178,29 +178,29 @@ do
   # try to get rid of all goofy characters to create a reasonable filename for the symlink
   if [ $do_try -gt 0 ]; then
      # change Oracle to OracleX to leave oracle in the filenames
-     efname3=$(echo $(pdftotext $file - | sed '/^ *$/q' | head -5 | sed "N; s/\n/_/g; s/[ ]\{1,\}/-/g" ))
+     efname3=$(echo $(pdftotext "$file" - | sed '/^ *$/q' | head -5 | sed "N; s/\n/_/g; s/[ ]\{1,\}/-/g" ))
      efname4=$(echo "$efname3" | sed 's/[^-a-zA-Z0-9._]\{1,\}/_/g; s/[-_.][-_.]\{1,\}/_/g' )
      efname5=$(echo "$efname4" | sed 's/^OracleX[-_]*GoldenGate[-_]*//; s/^for[-_]*//; s/^OracleX[-_]*//; s/^\([A-Z]\)-/\1/; s/^[-_.]*//; s/[-_.]*$//' )
      efname6=$(echo "$efname5" | sed 's/^\([A-Z]\)-/\1/; s/[-_]s[-_]/s-/g; s/^[-_.]*//; s/[-_.]*$//' )
      #printf "** info: try for longer title [a](was: $efname) => \"$efname5\"\n"
      #printf "** info: try for longer title [z](was: $efname) => \"$efname6\"\n"
 
-     efname="$efname6"
+     efname=$efname6
   fi
 
   # Optionally, include original filename in new filename. Linking is enabled
   # only if original filename is in link name (for safety, to guarantee unique names)
   if [ "$do_filename" = "1" ]; then
-    dir=$(dirname $file)
+    dir=$(dirname "$file")
     [ $dir = "." ] && dir="" || dir=${dir}/
-    [ "${efname}" = "" ] && efname=doc
+    [ "$efname" = "" ] && efname=doc
 
     efname_len=${#efname}
     [ $efname_len -gt 140 ] \
          && printf "** [warning] name too long (len=$efname_len); $efname\n** warning: truncating name to 140 chars\n\n" \
          && efname="${efname:0:140}"
 
-    efname=$(basename $file .pdf)-${efname}.pdf       #efname=${dir}$(basename $file .pdf)-${efname}.pdf
+    efname="$(basename "$file" .pdf)-${efname}.pdf"       #efname=${dir}$(basename $file .pdf)-${efname}.pdf
     log "** debug: long name (len=$efname_len): $efname\n"
 
     if [ "$do_link" = "1" ]; then
@@ -212,7 +212,7 @@ do
        ** file=$file
        ** orig_file=$orig_file \n"
 
-      link_file="$efname"
+      link_file=$efname
       orig_file="$outdir_rel"/"$file"
 
       # don't link if pdf is already a link, or extended filename is same as pdf
@@ -228,14 +228,14 @@ do
 
   if [ "$do_text" = "1" ]; then
     [ ! -d "$outdir" ] && $run mkdir -p "$outdir"
-    out=${outdir}/$(basename ${efname} .pdf).txt
+    out="${outdir}/$(basename "$efname" .pdf).txt"
     if [ -f "$out" ]; then
       [ "$do_ask" = "1" ] && echo "file exists: " && rm -i "$out"
       [ "$do_ask" = "0" ] && echo "file exists, overwriting: $out" && rm "$out"
     fi
 
     echo "** creating output file: $out"
-    [ ! -f "$out" ] && $run pdftotext $file $out      # pdftotext $file - > $out
+    [ ! -f "$out" ] && $run pdftotext "$file" "$out"      # pdftotext $file - > $out
     echo ===========================
   fi
 
