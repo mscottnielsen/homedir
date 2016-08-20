@@ -14,6 +14,8 @@ set nocompatible
 set backspace=indent,eol,start
 " set background=dark
 
+" allow 'p' to paste from clipboard, vs "+GP
+" set clipboard=unnamedplus
 
 if has("vms")
   set nobackup		" do not keep a backup file, use versions instead
