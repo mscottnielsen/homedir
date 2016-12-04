@@ -39,6 +39,7 @@ backup
 
 # common generated project directories
 build/
+_build/
 target/
 dist/
 activemq-data/
@@ -128,13 +129,19 @@ local.properties
 *.log
 *.sqlite
 
-###################
-## Java dev
+# Java
 *.class
 *.war
 *.jar
 *.ear
 
+# Python
+*.py[cod]
+.tox
+MANIFEST
+pip.egg-info/
+.coverage
+coverage.xml
 
 
 ###################
