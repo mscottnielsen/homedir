@@ -86,3 +86,7 @@ set tabstop=4
 set shiftwidth=4
 set expandtab
 
+" assumes pathogen installed ~/.vim/autoload/pathogen.vim, and
+" give custom plugin bundle directory, rather than default ~/.vim/bundle
+execute pathogen#infect('bundle/{}', '~/vim-plugin/bundle/{}')
+
