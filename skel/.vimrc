@@ -1,12 +1,4 @@
-" A vimrc file.
-"
-" To use it, copy it to
-"     for Unix and OS/2:  ~/.vimrc
-"	      for Amiga:  s:.vimrc
-"  for MS-DOS and Win32:  $VIM\_vimrc
-"	    for OpenVMS:  sys$login:.vimrc
-"
-" Use Vim settings, rather then Vi settings (much better!).
+" Use Vim settings, rather then Vi settings.
 " This must be first, because it changes other options as a side effect.
 set nocompatible
 
@@ -39,9 +31,6 @@ map Q gq
 " reformat text to <=66 chars per line
 map MM :%s/.\{-66,\}  */&<C-V><C-M>/g
 
-" fill out mergereq form
-let @m=':%s/Yes.No.*/& No/:%s/Reviewed By.*/& No/:%s/Additional Com.*/& No//^List reviewA :r!whoamikJ/DescriptA'
-
 
 " imap fn <C-n>=expand("%:t:r")<CR>
 " imap <F7> <C-N>=expand("%:t")<CR>
@@ -70,55 +59,26 @@ if has("autocmd")
   " Use the default filetype settings, so that mail gets 'tw' set to 72,
   " 'cindent' is on in C files, etc.
   " Also load indent files, to automatically do language-dependent indenting.
-  " filetype plugin indent on
+  filetype plugin indent on
 
   " if newer filetype settings are not available, just
   " enable file type detection.
-  filetype on
-
-  " Put these in an autocmd group, so that we can delete them easily.
-  augroup vimrcEx
-  au!
+  " filetype on
 
   " For all text files set 'textwidth' to 78 characters.
   " autocmd FileType text setlocal textwidth=78
 
-  " When editing a file, always jump to the last known cursor position.
-  " Don't do it when the position is invalid or when inside an event handler
-  " (happens when dropping a file on gvim).
+  " jump to the last known cursor position, if valid
   autocmd BufReadPost *
     \ if line("'\"") > 0 && line("'\"") <= line("$") |
     \   exe "normal g`\"" |
     \ endif
 
-  augroup END
-
-  " specific for goldengate parameter files
-  augroup filetypedetect
-    " older vim (eg, 5.7), syntax files full path
-    " au BufNewFile,BufRead *.prm so ~/.vim/syntax/prm.vim
-    " au BufNewFile,BufRead *.oby so ~/.vim/syntax/prm.vim
-
-    " modern vim, syntax files ~/.vim/syntax/{filetype}.vim
-    au BufNewFile,BufRead *.prm setf prm
-    au BufNewFile,BufRead *.oby setf prm
-
-    au! BufRead,BufNewFile *.vm setf velocity
-    au! BufRead,BufNewFile *.pom setf xml
-
-    au! BufNewFile,BufRead *.groovy setf groovy
-    au! BufNewFile,BufRead *.gradle setf groovy
-  augroup END
-
   " disable bell / visual bell
   autocmd VimEnter * set vb t_vb=
 
-  " fix friggin formatoptions
-  " set formatoptions-=croq " doesn't work
+  " set formatoptions-=croq " doesn't work on all vim
   au FileType,BufNewFile,BufRead * se fo-=r fo-=o fo-=c fo-=q
-
-else
-
 endif " has("autocmd")
 
 " set autoindent          " always set autoindenting on
