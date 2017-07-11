@@ -2,7 +2,9 @@
 # if domain isn't there, autocomplete with a default
 
 _ssh_add_domain() {
-  sed 's/\(^[^.]*$\)/\1.us.oracle.com/'
+  #local my_org=".intranet.example.com"
+  #sed "s/\(^[^.]*$\)/\1${my_org}/"
+  cat
 }
 
 # Include all hosts currently logged into (as-is, without modification (e.g., fqdn)).
@@ -41,8 +43,6 @@ _ssh_known_hosts() {
       | sort -u \
       | _ssh_add_domain
 }
-
-
 
 _ssh() {
     local cur known_hosts
