@@ -90,3 +90,8 @@ set expandtab
 " give custom plugin bundle directory, rather than default ~/.vim/bundle
 execute pathogen#infect('bundle/{}', '~/vim-plugin/bundle/{}')
 
+let g:tex_conceal = ""
+let g:vim_markdown_math = 1
+
+" renable with zc
+set nofoldenable
