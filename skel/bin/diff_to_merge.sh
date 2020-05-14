@@ -54,7 +54,6 @@ diffr () {
        --exclude="CVS"  \
        --exclude=".svn"  \
        --exclude=".git"  \
-       --exclude=".ade_path"  \
        "$@"
 }
 
