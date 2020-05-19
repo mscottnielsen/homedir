@@ -29,8 +29,8 @@ do_clone() {
   ( $RUN mkdir -p "$dir" && $RUN cd "$dir" && $RUN git clone "$url" && $RUN cd - )
 }
 
-[ $1 = "-n" ] && RUN=echo && shift
-[ $1 = "-h" ] && { usage; exit 2; }
+[[ $1 = "-n" ]] && RUN=echo && shift
+[[ $1 = "-h" || $# = 0 ]] && { usage; exit 2; }
 
 for arg; do
   if echo "$arg" | egrep -q 'git@github'; then
