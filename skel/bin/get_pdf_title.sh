@@ -137,10 +137,10 @@ while getopts ad:filtvx opt ; do
 done; shift $((OPTIND-1)); OPTIND=1
 
 [ "$do_link" = "0" ] \
-    && printf "** [warning] Not creating links, just printing pdf info to stdout (use '-h' for full usage).\n\n"
+    && printf "** [warning] Not creating links, just printing pdf info to stdout (use '-h' for full usage).\n\n" 1>&2
 
 [ "$do_link" = "1" -a "$do_filename" = "0" ] \
-    && printf "** [warning] Links won't be created unless '-f' is also specified.\n\n"
+    && printf "** [warning] Links won't be created unless '-f' is also specified.\n\n" 1>&2
 
 for file
 do
@@ -197,7 +197,7 @@ do
 
     efname_len=${#efname}
     [ $efname_len -gt 140 ] \
-         && printf "** [warning] name too long (len=$efname_len); $efname\n** warning: truncating name to 140 chars\n\n" \
+         && printf "** [warning] name too long (len=$efname_len); $efname\n** warning: truncating name to 140 chars\n\n" 1>&2 \
          && efname="${efname:0:140}"
 
     efname="$(basename "$file" .pdf)-${efname}.pdf"       #efname=${dir}$(basename $file .pdf)-${efname}.pdf
@@ -210,7 +210,7 @@ do
       [ "$verbose" = "1" ] && printf "** info: outdir=$outdir
        ** outdir_rel=$outdir_rel
        ** file=$file
-       ** orig_file=$orig_file \n"
+       ** orig_file=$orig_file \n" 1>&2
 
       link_file=$efname
       orig_file="$outdir_rel"/"$file"
