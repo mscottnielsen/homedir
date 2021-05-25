@@ -124,6 +124,9 @@
 	#  (if using older git, comment out, or else there will be an error message)
 	default = simple
 
+[pull]
+	ff = only
+
 [core]
 	# prevent chmod from showing up as diff (e.g, broken file systems or windows)
 	#filemode = false
